@@ -9,8 +9,12 @@ from common import PORT
 from scheduler import Scheduler
 from scheduler import Machine
 
-from subprocess import Popen, PIPE
-
+#os.environ["CONDOR_CONFIG"] = CONDOR_CONFIG
+dir_path = os.path.dirname(os.path.realpath(__file__))
+dir_path = os.path.join(dir_path, 'lib')
+sys.path.append(dir_path)
+import htcondor
+        
     
 def receive(client_socket):    
     # Receive messages from 1 client and concatenate them
@@ -42,16 +46,16 @@ def main(local=False):
     server_socket.settimeout(5)
     
     # Condor Connection
+    coll = htcondor.Collector(socket.getfqdn())
+    sched_ad = coll.locate(htcondor.DaemonTypes.Schedd)
+    schedd = htcondor.Schedd(sched_ad)
     
-    # query slots
-    cmd = 'condor_status -l |grep ^Name'
-    proc = Popen(cmd, stdout=PIPE, shell=True)
-    results = proc.communicate()[0].replace("Name = ","").split("\n")
-    results = filter(None, results)
-    for r in results:
-        scheduler.machines[r] = Machine(r, local=True)
-    
-    print results
+    # Get existing slots
+    if local:
+        results = coll.query(htcondor.AdTypes.Startd, "true", ["Name", "SlotID"])
+        scheduler.limit_machine = len(results)
+        for r in results:
+            scheduler.machines[r["Name"]] = Machine(r["Name"], local=True)
     
     # Wait for connections until receive a stop message
     stop = False
@@ -65,7 +69,6 @@ def main(local=False):
                 stop = True
                 
             # Schedule a new Workflow instance
-            # TODO: combine
             else:
                 (dir, pred, budget) = msg.split(' ')
                 sched = scheduler.schedule(dir, pred, float(budget))
@@ -73,28 +76,12 @@ def main(local=False):
 
             client_socket.close()
         except timeout:
-            
-            # Events:  
-            # - slots changed?
-            # - end of job:
-            #   - need resched?
-            #   - disallocate machine?
-            # - scheduled task:
-            #   - create new machine
-            
             # Query Slots
-            cmd = 'condor_status -l |grep ^Name'
-            proc = Popen(cmd, stdout=PIPE, shell=True)
-            results = proc.communicate()[0].replace("Name = ","").split("\n")
-            results = filter(None, results)
-            for r in results:
-                scheduler.machines[r] = Machine(r, local=True)
-            
+            results = coll.query(htcondor.AdTypes.Startd, "true", ["Name", "SlotID"])
             print(len(results))
             print(results)
             if len(results) > 0:
-                pass
-                #machine = results[0]["Name"]
+                machine = results[0]["Name"]
                 # Query Jobs
                 ''' JobStatus
                 0    Unexpanded     U
@@ -105,7 +92,6 @@ def main(local=False):
                 5    Held           H
                 6    Submission_err E
                 '''
-                '''
                 results = schedd.query("JobStatus =?= 1", ["GlobalJobId", "pegasus_wf_dag_job_id", "pegasus_wf_uuid"] , limit=1000)
                 print(len(results))
                 print(results)
@@ -113,7 +99,6 @@ def main(local=False):
                 for r in results:
                     print('editing: ' + r["GlobalJobId"])
                     schedd.edit('GlobalJobId == "'+r["GlobalJobId"]+'"','Requirements','(Name == "'+machine+'")')
-                '''
                 # get status
                 # compare
                 # action
