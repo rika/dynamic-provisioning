@@ -13,7 +13,7 @@ from subprocess import Popen, PIPE
 
     
 def receive(client_socket):    
-    # Receive messages from 1 client and concatenate them
+    # Receive messages from client and concatenate them
     chunks = []
     while True:
         try:
@@ -56,6 +56,8 @@ def main(local=False):
     # Wait for connections until receive a stop message
     stop = False
     while(not stop):
+        ## Update time
+        
         try:
             client_socket, _addr = server_socket.accept()
             msg = receive(client_socket)
@@ -64,13 +66,15 @@ def main(local=False):
             if '--stop' in msg:
                 stop = True
                 
-            # Schedule a new Workflow instance
             # TODO: combine
             else:
+                # Schedule a new Workflow instance
                 (dir, pred, budget) = msg.split(' ')
                 sched = scheduler.schedule(dir, pred, float(budget))
                 
-
+                ## Update execution
+                ## Update expected completion time
+                
             client_socket.close()
         except timeout:
             
