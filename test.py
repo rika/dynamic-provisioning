@@ -9,10 +9,13 @@ import time
 import traceback
 import uuid
 from sets import Set
+from datetime import datetime
 
 from workflow import Workflow
 from scheduler import Scheduler
+from execution import Execution
 from provisioner import Provisioner
+
 
 
 class Test(unittest.TestCase):
@@ -25,9 +28,12 @@ class Test(unittest.TestCase):
     def test_workflow(self):
         result = False
         
-        w = Workflow(self.tutorial_dir_1, None)
+        w = Workflow()
+        w.add_workflow(self.tutorial_dir_1, None)
         for j in w.jobs:
             print j.id
+        
+        print [j.rank for j in w.ranked_jobs]
         
         result = True 
         self.assertTrue(result)
@@ -35,24 +41,27 @@ class Test(unittest.TestCase):
     def test_merge_workflows(self):
         result = False
         
-        w1 = Workflow(self.tutorial_dir_1, None)
-        w2 = Workflow(self.tutorial_dir_2, None)
-        w1.merge(w2)
-        
+        w = Workflow()
+        w.add_workflow(self.tutorial_dir_1, None)
+        w.add_workflow(self.tutorial_dir_2, None)
          
-        for w in Set([j.wf_id for j in w1.jobs]):
-            print w
-            for j in [j for j in w1.jobs if j.wf_id == w]:
+        for wid in Set([j.wf_id for j in w.jobs]):
+            print wid
+            for j in [j for j in w.jobs if j.wf_id == wid]:
                 print j.id           
         
         result = True 
         self.assertTrue(result)
         
-    def test_provisioner(self):
+    def test_nmax(self):
         result = False
-        prov = Provisioner()
-        prov.plan_provision(self.tutorial_dir_1, None, 10)
+        wf = Workflow()
+        wf.add_workflow(self.tutorial_dir_1, None)
         
+        exc = Execution()
+        
+        sched = Scheduler()
+        sched.get_nmax(wf, [], exc, datetime(2000,1,1))
         result = True
         self.assertTrue(result)
 

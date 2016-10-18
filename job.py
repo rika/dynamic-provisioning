@@ -8,8 +8,6 @@ class Job:
         self.children = []
         self.parents = []
         
-        self.pduration = 1 # default
-        
     def parent_of(self, job):
         self.children.append(job)
         job.parents.append(self)
@@ -17,6 +15,8 @@ class Job:
     def __str__(self):
         return "JOB %s %s (%.2f)" % (self.id, self.wf_id, self.pduration)
     
+    '''
     # necessário para a ordenação do heapq
     def __lt__(self, job2):
         return (self.pduration < job2.pduration)
+    '''

@@ -3,13 +3,13 @@
 
 import uuid
 
-class Slot:
-    def __init__(self, id=None, local=False, fake=False):
+class Machine:
+    def __init__(self, id=None, is_fake=False, is_local=False):
         if id == None:
             id = str(uuid.uuid4().get_hex())
         self.id = id
-        self.local=local
-        self.fake=fake
+        self.is_fake=is_fake
+        self.is_local=is_local
         
     
     def __str__(self):

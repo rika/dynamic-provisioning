@@ -4,121 +4,10 @@
 import sys
 import os
 
+from machine import Machine
+
 class Scheduler():
-    def update_workflow(self, workflow):
-        self.workflow = workflow
-        # Ranking
-        print workflow.jobs
-        self.sorted_jobs = self.__rank_sort(workflow.jobs)
-        #print([str(job) for job in sorted_jobs])
-        
-    
-    def schedule(self, sorted_jobs, machines):
-        now = 0
-        _machines = {}
-        entries = []
-        for job in sorted_jobs:
-            # insertion policy
-            e = [earliest_entry(machine, job, now) for machine in machines]
-            # earliest finish
-            entry = min(e, key=lambda x: x.end)
-            entries.append(entry)
-            
-            if entry.machine in _machines.keys():
-                _machines[entry.machine].append(entry)
-                _machines[entry.machine].sort(key=operator.attrgetter('end'))
-            else:
-                _machines[entry.machine] = [entry]
-        
-        # corrigir
-        cost = 1
-        for machine in _machines.keys():
-            cost +=  machine.sched_entries[-1].end - machine.sched_entries[0].start
-        return entries, 0.1*cost 
-
-    def get_nmax(self, sorted_jobs):
-        machines = [Machine(None)]
-        entries = []
-        
-        # insertion policy
-        now = 0
-        for job in sorted_jobs:
-            entries = [machine.earliest_entry(job, now) for machine in machines]
-            entry = min(entries, key=lambda x: x.end)
-            
-            new_machine = Machine(None)
-            new_entry = new_machine.earliest_entry(job, now)
-            
-            if new_entry.start < entry.start:
-                machines.append(new_machine)
-                new_entry.job.sched_entry = new_entry
-                new_entry.machine.sched_entries.append(new_entry)
-                new_entry.machine.sched_entries.sort(key=operator.attrgetter('end'))    
-            else:
-                entry.job.sched_entry = entry
-                entry.machine.sched_entries.append(entry)
-                entry.machine.sched_entries.sort(key=operator.attrgetter('end'))
-        
-        return len(machines)
-    
-    
-    def earliest_entry(entries, machine, job, timestamp):
-        _t = [timestamp]
-        parents_entries = [e for e in entries if e.job in job.parents]
-        for e in parents_entries:
-            _t.append(e.end)
-                        
-        ready_at = max(_t)
-        machine_entries = [e for e in entries if e.machine == machine]
-        
-        if len(machine_entries) == 0:
-            return ScheduleEntry(job, machine, ready_at, ready_at + job.pduration)
-        
-        sched_entry = None
-        machine_entries.sort(key=lambda x: x.end)
-        it = iter(machine_entries) #ordered
-        before = next(it)
-        while(sched_entry is None):
-            start = max([before.end, ready_at])
-            end = start + job.pduration
-            
-            try:
-                after = next(it)
-                if (end < after.start):
-                    sched_entry = ScheduleEntry(job, machine, start, end)
-                
-                before = after
-                    
-            except(StopIteration):
-                sched_entry = ScheduleEntry(job, machine, start, end)
-                
-        return sched_entry
-
-    def __visit(self, job, visited):
-        visited[job] = True
-        for child in job.children:
-            if visited[child] is False:
-                visit(child, visited)
-        
-        job.rank = job.pduration
-        if len(job.children) > 0:
-            job.rank += max([child.rank for child in job.children ])
-            
-    
-    def __rank_sort(self, jobs):
-        visited = {}
-        
-        for job in jobs:
-            visited[job] = False
-            
-        for job in jobs:
-            if visited[job] is False:
-                self.__visit(job, visited)
-               
-        return sorted(jobs, key=operator.attrgetter('rank'), reverse=True) 
-
-      
-    def __number_of_machines(self):
+    def number_of_machines(self):
         costs = {}
         
         satisfied, costs[self.nmax] = self.satisfy(self.nmax)
@@ -146,6 +35,41 @@ class Scheduler():
             raise Exception("Not enough budget.")
         
         return lowerb, costs
+
+    def get_nmax(self, workflow, machines, execution, timestamp):
+        """
+        Get the max number of machines that can be used by a workflow,
+        based on the current state of the workflow execution.
+        :param workflow: workflow structure
+        :param machines: list of allocated machines
+        :param execution: state of the execution
+        :param timestamp: barrier timestamp
+        :return n: max number of machines that can be used
+        """
+        machines = [Machine(None)]
+        entries = []
+        
+        # insertion policy
+        now = 0
+        for job in workflow.ranked_jobs:
+            entries = [machine.earliest_entry(job, now) for machine in machines]
+            entry = min(entries, key=lambda x: x.end)
+            
+            new_machine = Machine(None)
+            new_entry = new_machine.earliest_entry(job, now)
+            
+            if new_entry.start < entry.start:
+                machines.append(new_machine)
+                new_entry.job.sched_entry = new_entry
+                new_entry.machine.sched_entries.append(new_entry)
+                new_entry.machine.sched_entries.sort(key=operator.attrgetter('end'))    
+            else:
+                entry.job.sched_entry = entry
+                entry.machine.sched_entries.append(entry)
+                entry.machine.sched_entries.sort(key=operator.attrgetter('end'))
+        
+        return len(machines)
+      
         
     def __satisfy(self, n):
         now = 0
@@ -166,3 +90,35 @@ class Scheduler():
             return True, cost
         else:
             return False, cost
+
+    def __schedule(self, workflow, machines, entries, timestamp, vm_cost):
+        """
+        Schedule the workflow along the machines.
+        :param workflow: workflow structure
+        :param machines: list of allocated machines 
+        :param execution: state of the execution
+        :param timestamp: barrier timestamp
+        :param vm_cost: cost of a vm per second
+        :return entries, cost: the schedule and it's cost 
+        """
+        now = 0
+        _machines = {}
+        entries = []
+        for job in sorted_jobs:
+            # insertion policy
+            e = [earliest_entry(machine, job, now) for machine in machines]
+            # earliest finish
+            entry = min(e, key=lambda x: x.end)
+            entries.append(entry)
+            
+            if entry.machine in _machines.keys():
+                _machines[entry.machine].append(entry)
+                _machines[entry.machine].sort(key=operator.attrgetter('end'))
+            else:
+                _machines[entry.machine] = [entry]
+        
+        # corrigir
+        cost = 1
+        for machine in _machines.keys():
+            cost +=  machine.sched_entries[-1].end - machine.sched_entries[0].start
+        return entries, 0.1*cost 
