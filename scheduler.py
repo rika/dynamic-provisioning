@@ -5,11 +5,11 @@ import sys
 import os
 
 class Scheduler():
-    def __init__(self, workflow):
-        
+    def update_workflow(self, workflow):
         self.workflow = workflow
         # Ranking
-        self.sorted_jobs = rank_sort(workflow.jobs.values())
+        print workflow.jobs
+        self.sorted_jobs = self.__rank_sort(workflow.jobs)
         #print([str(job) for job in sorted_jobs])
         
     
@@ -94,7 +94,7 @@ class Scheduler():
                 
         return sched_entry
 
-    def visit(job, visited):
+    def __visit(self, job, visited):
         visited[job] = True
         for child in job.children:
             if visited[child] is False:
@@ -105,7 +105,7 @@ class Scheduler():
             job.rank += max([child.rank for child in job.children ])
             
     
-    def rank_sort(jobs):
+    def __rank_sort(self, jobs):
         visited = {}
         
         for job in jobs:
@@ -113,12 +113,11 @@ class Scheduler():
             
         for job in jobs:
             if visited[job] is False:
-                visit(job, visited)
+                self.__visit(job, visited)
                
         return sorted(jobs, key=operator.attrgetter('rank'), reverse=True) 
 
-
-            
+      
     def __number_of_machines(self):
         costs = {}
         

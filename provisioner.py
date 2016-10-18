@@ -20,16 +20,24 @@ class Provisioner():
         self.total_budget = 0
         self.machines = []
         self.sched_entries = {}
+        self.workflow = None
+        self.scheduler = Scheduler()
+        self.execution = Execution()
         
     def plan_provision(self, workflow_dir, prediction_file, budget):
         ## MUDAR: como tratar o budget para novos workflows
         self.total_budget += budget
         
-        workflow = Workflow(workflow_dir, prediction_file)
-        scheduler = Scheduler(workflow)
+        w = Workflow(workflow_dir, prediction_file)
+        if self.workflow == None:
+            self.workflow = w
+        else:
+            self.workflow.merge(w)
+        
+        self.scheduler.update_workflow(self.workflow)
         
         # Max number of vms
-        nmax = min(self.vm_limit, scheduler.get_nmax())
+        nmax = min(self.scheduler.get_nmax(), self.vm_limit)
         print('nmax '+str(nmax))
 
         # Get the number of machines to be used
@@ -39,6 +47,7 @@ class Provisioner():
             # maybe the budge is not enough
             print(e)
         
+        '''
         # add fake machines 
         if n > len(self.machines):
             for i in range(n-len(self.machines)):
@@ -48,9 +57,11 @@ class Provisioner():
             # descobrir qual maquina deve ser liberada
             # faz sentido?
             pass
-        
-        entries, cost = scheduler.schedule(self.machines.values())
-        print('cost '+str(cost))
+        '''
+            
+        # Não deveria ter que fazer o sched denovo
+        #entries, cost = scheduler.schedule(self.machines.values())
+        #print('cost '+str(cost))
                 
         #sync
         #for entry in entries:

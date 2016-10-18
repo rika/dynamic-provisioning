@@ -9,7 +9,6 @@ from xml.etree import ElementTree as ET
 
 from job import Job
 from slot import Slot
-from sched
 
 class Workflow():
     def __init__(self, dir, predfile):
