@@ -6,10 +6,8 @@ import socket
 from threading import Thread
 from _socket import timeout
 from common import PORT
-from scheduler import Scheduler
-from scheduler import Machine
 
-from subprocess import Popen, PIPE
+from provisioner import Provisioner
 
     
 def receive(client_socket):    
@@ -32,26 +30,16 @@ def receive(client_socket):
     
     return ''.join(chunks)
 
+
+
 def main(local=False):
-    scheduler = Scheduler()
+    provisioner = Provisioner(vm_limit=2)
     
     # Socket setup    
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.bind(('localhost', PORT))
     server_socket.listen(1)
     server_socket.settimeout(5)
-    
-    # Condor Connection
-    
-    # query slots
-    cmd = 'condor_status -l |grep ^Name'
-    proc = Popen(cmd, stdout=PIPE, shell=True)
-    results = proc.communicate()[0].replace("Name = ","").split("\n")
-    results = filter(None, results)
-    for r in results:
-        scheduler.machines[r] = Machine(r, local=True)
-    
-    print results
     
     # Wait for connections until receive a stop message
     stop = False
@@ -66,14 +54,13 @@ def main(local=False):
             if '--stop' in msg:
                 stop = True
                 
-            # TODO: combine
             else:
+                provisioner.update_budget_timestamp()
+                
                 # Schedule a new Workflow instance
                 (dir, pred, budget) = msg.split(' ')
-                sched = scheduler.schedule(dir, pred, float(budget))
-                
-                ## Update execution
-                ## Update expected completion time
+                provisioner.add_workflow(dir, pred, budget)
+                provisioner.update_schedule()
                 
             client_socket.close()
         except timeout:
@@ -86,46 +73,16 @@ def main(local=False):
             # - scheduled task:
             #   - create new machine
             
-            # Query Slots
-            cmd = 'condor_status -l |grep ^Name'
-            proc = Popen(cmd, stdout=PIPE, shell=True)
-            results = proc.communicate()[0].replace("Name = ","").split("\n")
-            results = filter(None, results)
-            for r in results:
-                scheduler.machines[r] = Machine(r, local=True)
+            provisioner.update_budget_timestamp()
             
-            print(len(results))
-            print(results)
-            if len(results) > 0:
-                pass
-                #machine = results[0]["Name"]
-                # Query Jobs
-                ''' JobStatus
-                0    Unexpanded     U
-                1    Idle           I
-                2    Running        R
-                3    Removed        X
-                4    Completed      C
-                5    Held           H
-                6    Submission_err E
-                '''
-                '''
-                results = schedd.query("JobStatus =?= 1", ["GlobalJobId", "pegasus_wf_dag_job_id", "pegasus_wf_uuid"] , limit=1000)
-                print(len(results))
-                print(results)
-                
-                for r in results:
-                    print('editing: ' + r["GlobalJobId"])
-                    schedd.edit('GlobalJobId == "'+r["GlobalJobId"]+'"','Requirements','(Name == "'+machine+'")')
-                '''
-                # get status
-                # compare
-                # action
-                
-                # monitor machines boots
-                #if task completed
-                    #if not ok:
-                        #reschedule
+            # Update and sync vms
+            provisioner.allocate_new_vms()
+            provisioner.deallocate_vms()
+            provisioner.sync_machines()
+            
+            # Update and sync jobs
+            provisioner.sync_jobs()
+            
     print("stop message received")
     
 if __name__ == '__main__':

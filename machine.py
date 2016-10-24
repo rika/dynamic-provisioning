@@ -3,14 +3,21 @@
 
 import uuid
 
-class Machine:
-    def __init__(self, id=None, is_fake=False, is_local=False):
+class Machine():
+    def __init__(self, id=None):
         if id == None:
             id = str(uuid.uuid4().get_hex())
         self.id = id
-        self.is_fake=is_fake
-        self.is_local=is_local
+        self.status = MachineStatus.scheduled
+        self.condor_slot = ""
         
     
     def __str__(self):
         return "S" + str(self.id)
+    
+class MachineStatus():
+    scheduled = 1
+    allocating = 2
+    running = 3
+    deallocating = 4
+    
