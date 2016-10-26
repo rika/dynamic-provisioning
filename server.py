@@ -8,7 +8,8 @@ from _socket import timeout
 from common import PORT
 
 from provisioner import Provisioner
-
+from provisioner import sched_cost_pred
+from statistics import Statistics
     
 def receive(client_socket):    
     # Receive messages from client and concatenate them
@@ -34,6 +35,7 @@ def receive(client_socket):
 
 def main(local=False):
     provisioner = Provisioner(vm_limit=2)
+    statistics = Statistics()
     
     # Socket setup    
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -61,7 +63,7 @@ def main(local=False):
                 (dir, pred, budget) = msg.split(' ')
                 provisioner.add_workflow(dir, pred, budget)
                 provisioner.update_schedule()
-                
+
             client_socket.close()
         except timeout:
             
@@ -83,6 +85,15 @@ def main(local=False):
             # Update and sync jobs
             provisioner.sync_jobs()
             
+            # Resched?
+            
+            # Statistics
+            cost_pred, wf_end = sched_cost_pred(provisioner.machines, provisioner.entries, provisioner.timestamp)
+            statistics.schedshot(provisioner.budget, cost_pred, wf_end)
+            statistics.snapshot(provisioner)
+        
+    statistics.jobs(provisioner)
+    statistics.dump()
     print("stop message received")
     
 if __name__ == '__main__':

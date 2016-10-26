@@ -11,12 +11,15 @@ from datetime import timedelta
 from workflow import Workflow
 from machine import Machine
 from machine import MachineStatus
+from job import Job
 from schedule_entry import ScheduleEntry
 from schedule_entry import EntryStatus
-from subprocess import Popen, PIPE
+from subprocess import Popen
+from subprocess import PIPE
 
+DEBUG = True
 VM_BOOTTIME = timedelta(seconds=20)
-VM_COST_PER_SEC = 0.0001
+VM_COST_PER_SEC = 1
 
 from time import time
 class Timer():
@@ -24,9 +27,10 @@ class Timer():
         self.t = time()
         
     def tick(self, msg=""):
-        _t = time()
-        print "%.2f [ %s ]" % ((_t - self.t), msg)
-        self.t = _t
+        if DEBUG:
+            _t = time()
+            print "%.2f [ %s ]" % ((_t - self.t), msg)
+            self.t = _t
 TIMER = Timer()
 
 def job_ready_at(job, entries, timestamp):
@@ -136,17 +140,19 @@ def schedule(workflow, machines, entries, timestamp):
         entry = earliest_entry(job, machines, entries, timestamp)
         insert_entry(entries[entry.machine], entry)
 
-def sched_cost(machines, entries, timestamp):
+def sched_cost_pred(machines, entries, timestamp):
     # cost calculation
     
     vm_runtime = 0
+    wf_end = timestamp
     for machine in machines:
         # machine is running until last job
-        # don't need to sort
-        finish = max([e.end() for e in entries[machine] if e.end() > timestamp])
-        vm_runtime = vm_runtime + (finish - timestamp).seconds 
+        start = max(timestamp, entries[machine][0].start())
+        finish = max(timestamp, entries[machine][-1].end())
+        wf_end = max(wf_end, finish)
+        vm_runtime = vm_runtime + (finish - start).seconds 
     
-    return vm_runtime * VM_COST_PER_SEC
+    return vm_runtime * VM_COST_PER_SEC, wf_end
     
 def sched_cost_n(workflow, machines, entries, n, timestamp):
     """
@@ -160,14 +166,17 @@ def sched_cost_n(workflow, machines, entries, n, timestamp):
     for i in range(n-len(_machines)):
         machine = Machine()
         _machines.append(machine)
-        boot_entry = ScheduleEntry(None, machine, timestamp, timestamp+VM_BOOTTIME)
+        boot_job = Job(None, 'boot', None)
+        boot_job.pduration = VM_BOOTTIME
+        boot_entry = ScheduleEntry(boot_job, machine, timestamp, timestamp+VM_BOOTTIME)
         _entries[machine] = [boot_entry]
     
     TIMER.tick("before sched")    
     schedule(workflow, _machines, _entries, timestamp)
     TIMER.tick("after sched")
     
-    return _entries, sched_cost(_machines, _entries, timestamp)
+    cost_pred, _wf_end = sched_cost_pred(_machines, _entries, timestamp)
+    return _entries, cost_pred
 
 class BudgetException(Exception):
     pass
@@ -175,7 +184,7 @@ class BudgetException(Exception):
 def number_of_machines(workflow, machines, entries, nmax, timestamp, budget):
     TIMER.tick('before number of machines')
     _entries = {}
-    costs = {}
+    cost = None
     
     lowerb = 0
     upperb = nmax # supoem nmax > 0
@@ -183,21 +192,22 @@ def number_of_machines(workflow, machines, entries, nmax, timestamp, budget):
 
     while not found:
         i = int(ceil((lowerb + upperb) / 2.0))
-        _entries[i], costs[i] = sched_cost_n(workflow, machines, entries, i, timestamp)
-        if costs[i] < budget: #satisfied
+        _entries[i], cost = sched_cost_n(workflow, machines, entries, i, timestamp)
+        if cost < budget: #satisfied
             lowerb = i
         else:
             upperb = i-1
         if lowerb == upperb:
             found = True
     if lowerb == 0:
-        raise BudgetException("Not enough budget.")
+        #raise BudgetException("Not enough budget.")
+        return None, 0, cost
     
     # analizar custos
     # remover maquinas nao utilizadas
     
     TIMER.tick('after number of machines')
-    return _entries[lowerb], lowerb, costs
+    return _entries[lowerb], cost, lowerb
 
 
 ''' JobStatus
@@ -279,24 +289,26 @@ class Provisioner():
         nmax = get_nmax(self.workflow, self.machines, _entries, self.vm_limit, self.timestamp)
         
         # Get the number of machines to be used
-        entries, n, costs = number_of_machines(self.workflow, self.machines, _entries, nmax, self.timestamp, self.budget)
+        entries, cost, n = number_of_machines(self.workflow, self.machines, _entries, nmax, self.timestamp, self.budget)
         
         # Delay boot entries and remove unused machines
-        _machines = entries.keys()
-        for m in _machines:
-            # machine has not been allocated yet
-            if m.status == MachineStatus.scheduled:
-                # there's more than only a boot entry
-                if len(entries[m]) <= 1:
-                    entries.pop(m, None)
-                # there's time between the boot and first entry
-                elif entries[m][0].sched_end < entries[m][1].sched_start:
-                    entries[m][0].sched_end = entries[m][1].sched_start
-                    entries[m][0].sched_start = entries[m][1].sched_start - entries[m][0].job.pduration  
+        if entries != None:
+            _machines = entries.keys()
+            for m in _machines:
+                # machine has not been allocated yet
+                if m.status == MachineStatus.scheduled:
+                    # there's more than only a boot entry
+                    if len(entries[m]) <= 1:
+                        entries.pop(m, None)
+                    # there's time between the boot and first entry
+                    elif entries[m][0].sched_end < entries[m][1].sched_start:
+                        entries[m][0].sched_end = entries[m][1].sched_start
+                        entries[m][0].sched_start = entries[m][1].sched_start - entries[m][0].job.pduration  
                      
         # Update schedule
         self.entries = entries
         TIMER.tick('after update_schedule')
+
 
     def update_budget_timestamp(self):
         timestamp = datetime.now()
@@ -312,26 +324,26 @@ class Provisioner():
 
     def allocate_new_vms(self):
         # boot entries
-        for m in [m for m in self.entries.keys() if self.entries[m][0].job == None
-                                           and self.entries[m][0].status == EntryStatus.scheduled
-                                           and self.entries[m][0].sched_start <= self.timestamp]:
-            # allocate vm TODO
-            print "Allocation", str(m)
-            
-            # update machine list
-            self.machines.append(m)
-            # update machine
-            m.status = MachineStatus.allocating
-            # update entry
-            self.entries[m][0].job_status = EntryStatus.executing
-            self.entries[m][0].real_start = self.timestamp
+        if self.entries != None:
+            for m in [m for m in self.entries.keys() if self.entries[m][0].status == EntryStatus.scheduled
+                                                    and self.entries[m][0].sched_start <= self.timestamp]:
+                # allocate vm TODO
+                print "Allocation", str(m)
+                
+                # update machine list
+                self.machines.append(m)
+                # update machine
+                m.status = MachineStatus.allocating
+                # update entry
+                self.entries[m][0].status = EntryStatus.executing
+                self.entries[m][0].real_start = self.timestamp
     
     
     def deallocate_vms(self):
-        
         for m in self.machines:
+            # if there's no more budget or
             # if there's nothing executing or scheduled to the machine
-            if len([e for e in self.entries[m] if e.status != EntryStatus.completed]) == 0:
+            if self.entries == None or len([e for e in self.entries[m] if e.status != EntryStatus.completed]) == 0:
                 # deallocated machine TODO
                 # file transfers?
                 print "Deallocation" , str(m)
@@ -377,7 +389,6 @@ class Provisioner():
             global_id, wf_id, job_id = l.split(" ")
             
             for e in [e for e in _entries if e.status == EntryStatus.scheduled
-                                                and e.job != None
                                                 and e.job.id == job_id
                                                 and e.job.wf_id == wf_id]:
                 # if the target machine is ready
