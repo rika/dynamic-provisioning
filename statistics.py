@@ -36,17 +36,17 @@ class Statistics():
 
     def schedshot(self, budget, cost, wf_end):
         timestamp = (datetime.now() - self.created_at).seconds
-        timespan = (wf_end-self.created_at).seconds
-        self.scheds.append((timestamp, budget, cost, timespan))
+        self.scheds.append((timestamp, budget, cost, wf_end))
         
     def jobs(self, provisioner):
         for m,l in provisioner.entries.iteritems():
             for e in l:
                 self.entries.append((m.id, m.condor_slot, e.job.wf_id, e.job.id, e.job.name,  \
-                                     (self.created_at - e.real_start).seconds, \
-                                     (self.created_at - e.real_end).seconds, \
-                                     (self.created_at - e.sched_start).seconds, \
-                                     (self.created_at - e.sched_end).seconds))
+                                     e.sched_start, \
+                                     e.sched_end, \
+                                     e.real_start, \
+                                     e.real_end, \
+                                     (e.real_end - e.real_start).seconds))
      
     def dump(self):
         home = os.path.expanduser('~')
@@ -61,10 +61,10 @@ class Statistics():
         dump_stat(path, self.numbers, headers)
                 
         path = os.path.join(directory, 'budget.csv')
-        headers = ['timestamp', 'budget', 'cost_prediction', 'timespan']
+        headers = ['timestamp', 'budget', 'cost_prediction', 'wf_end']
         dump_stat(path, self.scheds, headers)
 
         path = os.path.join(directory, 'jobs.csv')
-        headers = ['machine', 'slot', 'workflow', 'job_id', 'job_name', 'real_start', 'real_end', 'sched_start', 'sched_end']
+        headers = ['machine', 'slot', 'workflow', 'job_id', 'job_name', 'sched_start', 'sched_end', 'real_start', 'real_end', 'duration']
         dump_stat(path, self.entries, headers)
         

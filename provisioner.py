@@ -144,7 +144,9 @@ def sched_cost_pred(machines, entries, timestamp):
     # cost calculation
     
     vm_runtime = 0
-    wf_end = timestamp
+    wf_end = None
+    if len(machines) > 0:
+        wf_end = entries[machine[0]][-1].end()
     for machine in machines:
         # machine is running until last job
         start = max(timestamp, entries[machine][0].start())
