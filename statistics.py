@@ -35,19 +35,25 @@ class Statistics():
     def schedshot(self, timestamp, budget, cost, wf_end):
         self.scheds.append((timestamp, budget, cost, wf_end))
         
-    def jobs(self, provisioner):
-        for m,l in provisioner.entries.iteritems():
-            for e in l:
-                if e.real_end == None or e.real_start == None:
-                    duration = None
-                else:
-                    duration = (e.real_end - e.real_start).seconds
-                self.entries.append((m.id, m.condor_slot, e.job.wf_id, e.job.dag_job_id,  \
-                                     e.sched_start, \
-                                     e.sched_end, \
-                                     e.real_start, \
-                                     e.real_end, \
-                                     duration))
+    def jobs(self, entries):
+        for e in entries:
+            if e.real_end == None or e.real_start == None:
+                duration = None
+            else:
+                duration = (e.real_end - e.real_start).seconds
+                
+            if e.machine != None:
+                machine_id = e.machine.id
+                condor_slot = e.machine.condor_slot
+            else:
+                machine_id = condor_slot = None
+                
+            self.entries.append((machine_id, condor_slot, e.job.wf_id, e.job.dag_job_id,  \
+                                 e.sched_start, \
+                                 e.sched_end, \
+                                 e.real_start, \
+                                 e.real_end, \
+                                 duration))
      
     def dump(self):
         home = os.path.expanduser('~')

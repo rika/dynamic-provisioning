@@ -1,9 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-import sys
-import os
-
 from math import ceil
 from datetime import datetime
 from datetime import timedelta
@@ -14,8 +11,13 @@ from machine import MachineStatus
 from job import Job
 from schedule_entry import ScheduleEntry
 from schedule_entry import EntryStatus
-from subprocess import Popen
-from subprocess import PIPE
+
+from condor import condor_slots
+from condor import condor_q
+from condor import condor_qedit
+from condor import condor_job_completed
+from condor import condor_reschedule
+
 
 DEBUG = True
 VM_BOOTTIME = timedelta(seconds=20)
@@ -113,7 +115,6 @@ def get_nmax(workflow, machines, entries, vm_limit, timestamp):
     _machines = list(machines)
     _entries = {m:list(l) for m,l in entries.iteritems()}
     
-    n = len(workflow.ranked_jobs)
     # insertion policy
     for job in workflow.ranked_jobs:
         
@@ -175,7 +176,7 @@ def sched_cost_n(workflow, machines, entries, n, timestamp):
     _entries = dict(entries)
     
     # new machine + boot
-    for i in range(n-len(_machines)):
+    for _i in range(n-len(_machines)):
         machine = Machine()
         _machines.append(machine)
         boot_job = Job('boot', None)
@@ -235,56 +236,6 @@ def sync_parents(job, entries, timestamp):
         print "--Job", e.job.dag_job_id
         sync_parents(e.job, entries, timestamp)
 
-''' JobStatus
-0    Unexpanded     U
-1    Idle           I
-2    Running        R
-3    Removed        X
-4    Completed      C
-5    Held           H
-6    Submission_err E
-'''
-             
-def condor_slots():
-    cmd = 'condor_status -autoformat Name'
-    proc = Popen(cmd, stdout=PIPE, shell=True)
-    results = proc.communicate()[0].split("\n")
-    return filter(None, results)
-
-def condor_q():
-    cmd = "condor_q -constraint 'JobStatus == 1' -format '%s ' GlobalJobId -format '%s ' pegasus_wf_uuid -format '%s ' pegasus_wf_dag_job_id -format '%s\n' Requirements |awk '{ gsub(/\"/, \"\"); print $1\" \"$2\" \"$3;  }'"
-    proc = Popen(cmd, stdout=PIPE, shell=True)
-    return filter(None, proc.communicate()[0].split("\n"))
-
-def condor_qedit(global_id, wf_id, dag_job_id, target_machine):
-    cmd = "condor_qedit -constraint 'JobStatus == 1 &&" + \
-        " GlobalJobId == \"" + global_id + "\" &&" + \
-        " pegasus_wf_uuid == \"" + wf_id + "\" &&" + \
-        " pegasus_wf_dag_job_id == \""+ dag_job_id + "\"'" + \
-        " Requirements '( ( Target.Name== \""+ target_machine +"\" ) )'"
-    proc = Popen(cmd, stdout=PIPE, shell=True)
-    if proc.communicate()[0] != 'Set attribute "Requirements".\n':
-        raise Exception("condor_qedit failed")
-    
-
-def condor_job_completed(global_id, wf_id, job_id):
-    cmd = "condor_history -constraint 'JobStatus == 4 &&" + \
-        " GlobalJobId == \"" + global_id + "\" &&" + \
-        " pegasus_wf_uuid == \"" + wf_id + "\" &&" + \
-        " pegasus_wf_dag_job_id == \""+ job_id + "\"'" + \
-        " -autoformat GlobalJobId | grep " + global_id
-    proc = Popen(cmd, stdout=PIPE, shell=True)
-    results = filter(None, proc.communicate()[0].split("\n"))
-    if len(results) == 0:
-        return False
-    else:
-        return True
-    
-def condor_reschedule():
-    cmd = "condor_reschedule"
-    proc = Popen(cmd, stdout=PIPE, shell=True)
-    proc.communicate()
-
 class Provisioner():
     def __init__(self, vm_limit=32):
         self.vm_limit = vm_limit # user input
@@ -309,7 +260,7 @@ class Provisioner():
     def add_workflow(self, workflow_dir, prediction_file, budget):
         TIMER.tick('before add_workflow')
         self.budget = self.budget + int(budget)
-        self.workflow.add_workflow(workflow_dir, prediction_file)
+        self.workflow.add_workflow(workflow_dir, prediction_file=prediction_file)
         TIMER.tick('after add_workflow')
             
     def update_schedule(self):
@@ -323,7 +274,7 @@ class Provisioner():
         nmax = get_nmax(self.workflow, self.machines, _entries, self.vm_limit, self.timestamp)
         
         # Get the number of machines to be used
-        entries, cost, n = number_of_machines(self.workflow, self.machines, _entries, nmax, self.timestamp, self.budget)
+        entries, _cost, _n = number_of_machines(self.workflow, self.machines, _entries, nmax, self.timestamp, self.budget)
      
         # Delay boot entries and remove unused machines
         if entries != None:
@@ -395,11 +346,11 @@ class Provisioner():
     
     
     def sync_machines(self):
+        slots = condor_slots()
         running_machines = [m for m in self.machines if m.status == MachineStatus.running]
         allocating_machines = [m for m in self.machines if m.status == MachineStatus.allocating]
         allocating_machines.sort(key=lambda x: self.entries[x][0].sched_start)
         i = 0
-        slots = condor_slots()
         for s in slots:
             if s not in [m.condor_slot for m in running_machines]:
                 if len(allocating_machines[i:]) > 0:
@@ -418,18 +369,18 @@ class Provisioner():
 
     def sync_jobs(self):
         # New jobs
-        lines = condor_q()
+        lines = condor_q(1) # idle jobs
         nq = len(lines)
-        _entries = {x for v in self.entries.itervalues() for x in v} 
+        _entries = {x for v in self.entries.itervalues() for x in v}
         ns = len([e for e in _entries if e.status == EntryStatus.scheduled])
         ne = len([e for e in _entries if e.status == EntryStatus.executing])
         nc = len([e for e in _entries if e.status == EntryStatus.completed])
         print '[Q: %d S: %d E: %d C: %d]' % (nq,ns,ne,nc)
-                              
+
         scheduled_entries = [e for e in _entries if e.status == EntryStatus.scheduled]
                 
         for l in lines:
-            global_id, wf_id, dag_job_id = l.split(" ")
+            global_id, wf_id, dag_job_id, _host = l.split(" ")
             
             for e in [e for e in scheduled_entries if e.job.dag_job_id == dag_job_id \
                                                     and e.job.wf_id == wf_id]:
@@ -456,4 +407,3 @@ class Provisioner():
                 print "--Job", e.job.dag_job_id
         
         condor_reschedule()
-             

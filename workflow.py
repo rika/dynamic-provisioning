@@ -122,12 +122,13 @@ class Workflow():
     def __init__(self):
         self.jobs = []
     
-    def add_workflow(self, workflow_dir, prediction_file):
+    def add_workflow(self, workflow_dir, prediction_file=None):
         jobs = parse_dag(workflow_dir)
-        parse_predictions(prediction_file, jobs)
-        
         self.jobs = self.jobs + jobs
-        self.ranked_jobs = rank_jobs(self.jobs)
+        
+        if prediction_file != None:
+            parse_predictions(prediction_file, self.jobs)
+            self.ranked_jobs = rank_jobs(self.jobs)
         
 
  

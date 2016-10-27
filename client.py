@@ -1,10 +1,8 @@
 #!/usr/bin/env python
 # coding: utf-8
-import sys
 import os
 import socket
 import argparse
-from subprocess import call
 from common import PORT
 from time import sleep
 from subprocess import Popen
@@ -49,21 +47,20 @@ def main():
         # Directory + Prediction + Budget message
         if args.dir is None:
             raise Exception('missing option --dir')
-        if args.pred is None:
-            raise Exception('missing option --pred')
-        if args.budget is None:
-            raise Exception('missing option --budget')
-        if not os.path.isdir(args.dir):
-            raise Exception('error: invalid workflow directory')
-        if not os.path.isfile(args.pred):
-            raise Exception('error: invalid prediction file')
-        try:
-            "${:,.2f}".format(float(args.budget))
-        except ValueError:
-            raise Exception('error: invalid budget')
-    
-        # Ok
-        msg = args.dir +' '+ args.pred +' '+ args.budget
+        if args.pred is None or args.budget is None:
+            msg = args.dir
+        else:
+            if not os.path.isdir(args.dir):
+                raise Exception('error: invalid workflow directory')
+            if not os.path.isfile(args.pred):
+                raise Exception('error: invalid prediction file')
+            try:
+                "${:,.2f}".format(float(args.budget))
+            except ValueError:
+                raise Exception('error: invalid budget')
+        
+            # Ok
+            msg = args.dir +' '+ args.pred +' '+ args.budget
 
     # Send
     send(msg)

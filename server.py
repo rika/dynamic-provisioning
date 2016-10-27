@@ -1,35 +1,27 @@
 #!/usr/bin/env python
 # coding: utf-8
-import os
 import sys
 import socket
-from threading import Thread
 from _socket import timeout
 from common import PORT
 
+from monitor import Monitor
 from provisioner import Provisioner
 from provisioner import sched_cost_pred
 from statistics import Statistics
 
-TIMEOUT = 10
+TIMEOUT = 5
 
 def receive(client_socket):    
     # Receive messages from client and concatenate them
     chunks = []
     while True:
-        try:
-            data = client_socket.recv(1024)
-            if not data:
-                break
-            else:
-                chunks.append(data.decode('UTF-8'))
-            
-        except Exception as e:
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-            print(exc_type, fname, exc_tb.tb_lineno)
-            print(e)   
+        data = client_socket.recv(1024)
+        if not data:
             break
+        else:
+            chunks.append(data.decode('UTF-8'))
+
     
     return ''.join(chunks)
 
@@ -37,6 +29,7 @@ def receive(client_socket):
 
 def main(local=False):
     provisioner = Provisioner(vm_limit=3)
+    monitor = None
     statistics = Statistics()
     
     # Socket setup    
@@ -53,48 +46,63 @@ def main(local=False):
         try:
             client_socket, _addr = server_socket.accept()
             msg = receive(client_socket)
+            msgs = msg.split(' ')
 
             # Stop server
-            if '--stop' in msg:
+            if '--stop' in msgs[0]:
                 stop = True
+            elif len(msgs) == 1:
+                if monitor != None:
+                    raise Exception("Only one workflow can be monitored at a time")
+                
+                # Parse workflow to monitor
+                monitor = Monitor()
+                wf_dir = msgs[0]
+                monitor.add_workflow(wf_dir)
                 
             else:
+                if provisioner.monitor == True:
+                    raise Exception("Only one workflow can be monitored at a time")
+                
                 provisioner.update_budget_timestamp()
                 
-                # Schedule a new Workflow instance
-                (dir, pred, budget) = msg.split(' ')
-                provisioner.add_workflow(dir, pred, budget)
+                # Parse and schedule a new Workflow instance
+                wf_dir = msgs[0]
+                pred = msgs[1]
+                budget = msgs[2] 
+                provisioner.add_workflow(wf_dir, prediction_file=pred, budget=budget)
                 provisioner.update_schedule()
 
             client_socket.close()
         except timeout:
             
-            # Events:  
-            # - slots changed?
-            # - end of job:
-            #   - need resched?
-            #   - disallocate machine?
-            # - scheduled task:
-            #   - create new machine
-            
-            provisioner.update_budget_timestamp()
-            
-            # Update and sync vms
-            provisioner.allocate_new_vms()
-            provisioner.deallocate_vms()
-            provisioner.sync_machines()
-            
-            # Update and sync jobs
-            provisioner.sync_jobs()
-            
-            # Resched?
-            
-            # Statistics
-            cost_pred, wf_end = sched_cost_pred(provisioner.machines, provisioner.entries, provisioner.timestamp)
-            statistics.schedshot(provisioner.timestamp, provisioner.budget, cost_pred, wf_end)
-            statistics.snapshot(provisioner.timestamp, provisioner)
-        
-    statistics.jobs(provisioner)
+            if monitor == None:
+                provisioner.update_budget_timestamp()
+                
+                # Update and sync vms
+                provisioner.allocate_new_vms()
+                provisioner.deallocate_vms()
+                provisioner.sync_machines()
+                
+                # Update and sync jobs
+                provisioner.sync_jobs()
+                
+                # Resched?
+                
+                # Statistics
+                cost_pred, wf_end = sched_cost_pred(provisioner.machines, provisioner.entries, provisioner.timestamp)
+                statistics.schedshot(provisioner.timestamp, provisioner.budget, cost_pred, wf_end)
+                statistics.snapshot(provisioner.timestamp, provisioner)
+            else:
+                monitor.update_timestamp()
+                monitor.sync_machines()
+                monitor.sync_jobs()
+    
+    if monitor == None:
+        entries = {x for v in provisioner.entries.itervalues() for x in v}
+        statistics.jobs(entries)
+    else:
+        statistics.jobs(monitor.entries)
     statistics.dump()
     print("stop message received")
     
