@@ -5,18 +5,14 @@ import sys
 import os
 
 import glob
-from xml.etree import ElementTree as ET
+#from xml.etree import ElementTree as ET
 from job import Job
 from datetime import timedelta
 
 
-def parse_dax(workflow_dir):
+def parse_dag(workflow_dir):
     cwd = os.getcwd()
     os.chdir(workflow_dir)
-    
-    # get dax file
-    files = glob.glob("*.xml") + glob.glob("*.dax")
-    daxfile = os.path.join(workflow_dir, files[0])
     
     # get workflow id
     with open('braindump.txt') as f:
@@ -24,38 +20,68 @@ def parse_dax(workflow_dir):
             if 'wf_uuid' in line:
                 wf_id = line.split(' ')[1].rstrip('\n')
                 break
+        
+    # get dax file
+    files = glob.glob("*.dag")
+    dagfile = os.path.join(workflow_dir, files[0])
     os.chdir(cwd)
     
     # parse dax
     jobs = {}
-    try:
-        with open(daxfile) as dax:
-            tree = ET.parse(dax)
-            root = tree.getroot()
-            xmlns = root.tag.replace('adag', '')
-            # get jobs
-            for child in root:
-                if child.tag == xmlns + 'job':
-                    id = child.attrib['id']
-                    name = child.attrib['name']
-                    jobs[id] = Job(id, name, wf_id)
+    with open(dagfile) as dag:
+        for line in dag:
+            if line.startswith('JOB'):
+                dag_job_id = line.split(' ')[1]
+                jobs[dag_job_id] = Job(dag_job_id, wf_id)
+            elif line.startswith('PARENT'):
+                values = line.split(' ')
+                child = values[4].rstrip('\n')
+                parent = values[2]
+                jobs[child].parents.append(jobs[parent])
+                jobs[parent].children.append(jobs[child])
+
+    return jobs.values()
+'''
+def parse_dax(workflow_dir):
+    cwd = os.getcwd()
+    os.chdir(workflow_dir)
+    
+    # get workflow id
+    with open('braindump.txt') as f:
+        for line in f:
+            if 'wf_uuid' in line:
+                wf_id = line.split(' ')[1].rstrip('\n')
+                break
+    
+    # get dax file
+    files = glob.glob("*.xml") + glob.glob("*.dax")
+    daxfile = os.path.join(workflow_dir, files[0])
+    os.chdir(cwd)
+    
+    # parse dax
+    jobs = {}
+    with open(daxfile) as dax:
+        tree = ET.parse(dax)
+        root = tree.getroot()
+        xmlns = root.tag.replace('adag', '')
+        # get jobs
+        for child in root:
+            if child.tag == xmlns + 'job':
+                id = child.attrib['id']
+                name = child.attrib['name']
+                jobs[id] = Job(id, name, wf_id)
+        
+        # get dependencies
+        for child in root:
+            if child.tag == xmlns + 'child':
+                id = child.attrib['ref']
+                for gchild in child:
+                    gid = gchild.attrib['ref']
+                    jobs[gid].parent_of(jobs[id])
             
-            # get dependencies
-            for child in root:
-                if child.tag == xmlns + 'child':
-                    id = child.attrib['ref']
-                    for gchild in child:
-                        gid = gchild.attrib['ref']
-                        jobs[gid].parent_of(jobs[id])
-            
-    except Exception as e:
-        exc_type, exc_obj, exc_tb = sys.exc_info()
-        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-        print(exc_type, fname, exc_tb.tb_lineno)
-        print(e)
     
     return jobs.values()
-    
+'''    
 def parse_predictions(predfile, jobs):
     for job in jobs:
         job.pduration = timedelta(seconds=1)
@@ -97,7 +123,7 @@ class Workflow():
         self.jobs = []
     
     def add_workflow(self, workflow_dir, prediction_file):
-        jobs = parse_dax(workflow_dir)
+        jobs = parse_dag(workflow_dir)
         parse_predictions(prediction_file, jobs)
         
         self.jobs = self.jobs + jobs

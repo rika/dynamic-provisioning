@@ -73,7 +73,7 @@ def main():
     
     if args.wait == True:
         path = os.path.join(args.dir, 'jobstate.log')
-
+        sleep(10)
         while not workflow_finish(path):
             sleep(10)
         send('--stop')

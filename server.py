@@ -10,7 +10,9 @@ from common import PORT
 from provisioner import Provisioner
 from provisioner import sched_cost_pred
 from statistics import Statistics
-    
+
+TIMEOUT = 10
+
 def receive(client_socket):    
     # Receive messages from client and concatenate them
     chunks = []
@@ -34,14 +36,14 @@ def receive(client_socket):
 
 
 def main(local=False):
-    provisioner = Provisioner(vm_limit=2)
+    provisioner = Provisioner(vm_limit=3)
     statistics = Statistics()
     
     # Socket setup    
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.bind(('localhost', PORT))
     server_socket.listen(1)
-    server_socket.settimeout(5)
+    server_socket.settimeout(TIMEOUT)
     
     # Wait for connections until receive a stop message
     stop = False
@@ -89,8 +91,8 @@ def main(local=False):
             
             # Statistics
             cost_pred, wf_end = sched_cost_pred(provisioner.machines, provisioner.entries, provisioner.timestamp)
-            statistics.schedshot(provisioner.budget, cost_pred, wf_end)
-            statistics.snapshot(provisioner)
+            statistics.schedshot(provisioner.timestamp, provisioner.budget, cost_pred, wf_end)
+            statistics.snapshot(provisioner.timestamp, provisioner)
         
     statistics.jobs(provisioner)
     statistics.dump()

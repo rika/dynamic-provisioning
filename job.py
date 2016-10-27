@@ -2,15 +2,19 @@
 # coding: utf-8
 
 class Job:
-    def __init__(self, id, name, wf_id):
-        self.id = id
-        self.name = name
-        self.global_id = None
+    def __init__(self, dag_job_id, wf_id):
+        self.dag_job_id = dag_job_id
         self.wf_id = wf_id
-        self.children = []
+        self.global_id = None
         self.parents = []
-        
-    def parent_of(self, job):
-        self.children.append(job)
-        job.parents.append(self)
-    
+        self.children = []
+
+    def is_pegasus_job(self):
+        if self.dag_job_id.startswith('create_dir') or \
+           self.dag_job_id.startswith('register_staging') or \
+           self.dag_job_id.startswith('stage_in') or \
+           self.dag_job_id.startswith('stage_out') or \
+           self.dag_job_id.startswith('stage_worker'):
+            return True
+        else:
+            return False

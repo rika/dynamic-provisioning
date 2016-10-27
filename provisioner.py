@@ -35,11 +35,11 @@ TIMER = Timer()
 
 def job_ready_at(job, entries, timestamp):
     # job is ready when parent jobs finish executing
-    _t = [timestamp]
+    _t = timestamp
     for l in entries.values():
-        _t = _t + [e.end() for e in l if e.job in job.parents]
+        _t = max([_t] + [e.end() for e in l if e.job in job.parents])
 
-    return max(_t)
+    return _t
 
 def e_entry(job, machine, machine_entries, ready_at):
     # ordered entries of the machine
@@ -55,7 +55,7 @@ def e_entry(job, machine, machine_entries, ready_at):
     sched_entry = None
     it = iter(machine_entries) #ordered
     before = next(it)
-    while(sched_entry is None):
+    while(sched_entry is None): 
         start = max([before.end(), ready_at])
         end = start + job.pduration
         
@@ -83,7 +83,11 @@ def earliest_entry(job, machines, entries, timestamp):
     :return e_entry: earlist entry
     """
     ready_at = job_ready_at(job, entries, timestamp)
-    e_entries = [e_entry(job, machine, entries[machine], ready_at) for machine in machines] 
+    if job.is_pegasus_job():
+        e_entries = [e_entry(job, machines[0], entries[machines[0]], ready_at)]
+    else:
+        e_entries = [e_entry(job, machine, entries[machine], ready_at) for machine in machines[1:]]
+
     return min(e_entries, key=lambda x: (x.sched_end, -len(entries[x.machine])))
 
 def insert_entry(sorted_entries, new_entry):
@@ -107,7 +111,7 @@ def get_nmax(workflow, machines, entries, vm_limit, timestamp):
     """
     TIMER.tick('before get_nmax')
     _machines = list(machines)
-    _entries = dict(entries)
+    _entries = {m:list(l) for m,l in entries.iteritems()}
     
     n = len(workflow.ranked_jobs)
     # insertion policy
@@ -116,14 +120,14 @@ def get_nmax(workflow, machines, entries, vm_limit, timestamp):
         if len(_machines) < vm_limit:
             new_machine = Machine()
             boot_entry = ScheduleEntry(None, new_machine, timestamp, timestamp+VM_BOOTTIME)
-            new_entry = earliest_entry(job, [new_machine], dict(_entries.items() + [(new_machine, [boot_entry])]), timestamp)
+            new_entry = earliest_entry(job, _machines + [new_machine], dict(_entries.items() + [(new_machine, [boot_entry])]), timestamp)
         
             if new_entry.machine == new_machine:
                 _machines.append(new_machine)
                 _entries[new_machine] = [boot_entry, new_entry]
             else:
                 insert_entry(_entries[new_entry.machine], new_entry)
-        
+            
     TIMER.tick('after get_nmax')                
     return len(_machines)
 
@@ -139,20 +143,26 @@ def schedule(workflow, machines, entries, timestamp):
     for job in workflow.ranked_jobs:
         entry = earliest_entry(job, machines, entries, timestamp)
         insert_entry(entries[entry.machine], entry)
-
+        
 def sched_cost_pred(machines, entries, timestamp):
     # cost calculation
     
     vm_runtime = 0
     wf_end = None
-    if len(machines) > 0:
-        wf_end = entries[machine[0]][-1].end()
-    for machine in machines:
+    if len(machines) > 1:
+        wf_end = entries[machines[1]][-1].end()
+    for machine in machines[1:]:
         # machine is running until last job
         start = max(timestamp, entries[machine][0].start())
         finish = max(timestamp, entries[machine][-1].end())
         wf_end = max(wf_end, finish)
         vm_runtime = vm_runtime + (finish - start).seconds 
+
+    # manager
+    if wf_end != None:
+        start = timestamp
+        finish = wf_end
+        vm_runtime = vm_runtime + (finish - start).seconds
     
     return vm_runtime * VM_COST_PER_SEC, wf_end
     
@@ -168,7 +178,7 @@ def sched_cost_n(workflow, machines, entries, n, timestamp):
     for i in range(n-len(_machines)):
         machine = Machine()
         _machines.append(machine)
-        boot_job = Job(None, 'boot', None)
+        boot_job = Job('boot', None)
         boot_job.pduration = VM_BOOTTIME
         boot_entry = ScheduleEntry(boot_job, machine, timestamp, timestamp+VM_BOOTTIME)
         _entries[machine] = [boot_entry]
@@ -186,31 +196,44 @@ class BudgetException(Exception):
 def number_of_machines(workflow, machines, entries, nmax, timestamp, budget):
     TIMER.tick('before number of machines')
     _entries = {}
-    cost = None
+    costs = {}
     
-    lowerb = 0
+    lowerb = 1 # manager
     upperb = nmax # supoem nmax > 0
     found = False
 
     while not found:
         i = int(ceil((lowerb + upperb) / 2.0))
-        _entries[i], cost = sched_cost_n(workflow, machines, entries, i, timestamp)
-        if cost < budget: #satisfied
+        _entries[i], costs[i] = sched_cost_n(workflow, machines, entries, i, timestamp)
+        if costs[i] < budget: #satisfied
             lowerb = i
         else:
             upperb = i-1
         if lowerb == upperb:
             found = True
-    if lowerb == 0:
+    if lowerb == 1:
         #raise BudgetException("Not enough budget.")
-        return None, 0, cost
+        return None, costs[i], i # i is 2
     
     # analizar custos
     # remover maquinas nao utilizadas
     
     TIMER.tick('after number of machines')
-    return _entries[lowerb], cost, lowerb
+    return _entries[lowerb], costs[lowerb], lowerb
 
+def sync_parents(job, entries, timestamp):
+    parents_entries = [e for e in entries if e.status == EntryStatus.scheduled and \
+                                             e.job in job.parents]
+    print "!!!"
+    print [e.job.dag_job_id for e in parents_entries]
+    print [j.dag_job_id for j in job.parents]
+    for e in parents_entries:
+        e.status = EntryStatus.completed
+        e.real_end = timestamp
+        if e.real_start == None:
+            e.real_start = timestamp
+        print "--Job", e.job.dag_job_id
+        sync_parents(e.job, entries, timestamp)
 
 ''' JobStatus
 0    Unexpanded     U
@@ -229,15 +252,15 @@ def condor_slots():
     return filter(None, results)
 
 def condor_q():
-    cmd = "condor_q -constraint 'JobStatus == 1' -format '%s ' GlobalJobId -format '%s ' pegasus_wf_uuid -format '%s ' pegasus_wf_dax_job_id -format '%s\n' Requirements |grep 'Name' |awk '{ gsub(/\"/, \"\"); print $1\" \"$2\" \"$3;  }'"
+    cmd = "condor_q -constraint 'JobStatus == 1' -format '%s ' GlobalJobId -format '%s ' pegasus_wf_uuid -format '%s ' pegasus_wf_dag_job_id -format '%s\n' Requirements |awk '{ gsub(/\"/, \"\"); print $1\" \"$2\" \"$3;  }'"
     proc = Popen(cmd, stdout=PIPE, shell=True)
     return filter(None, proc.communicate()[0].split("\n"))
 
-def condor_qedit(global_id, wf_id, job_id, target_machine):
+def condor_qedit(global_id, wf_id, dag_job_id, target_machine):
     cmd = "condor_qedit -constraint 'JobStatus == 1 &&" + \
         " GlobalJobId == \"" + global_id + "\" &&" + \
         " pegasus_wf_uuid == \"" + wf_id + "\" &&" + \
-        " pegasus_wf_dax_job_id == \""+ job_id + "\"'" + \
+        " pegasus_wf_dag_job_id == \""+ dag_job_id + "\"'" + \
         " Requirements '( ( Target.Name== \""+ target_machine +"\" ) )'"
     proc = Popen(cmd, stdout=PIPE, shell=True)
     if proc.communicate()[0] != 'Set attribute "Requirements".\n':
@@ -248,7 +271,7 @@ def condor_job_completed(global_id, wf_id, job_id):
     cmd = "condor_history -constraint 'JobStatus == 4 &&" + \
         " GlobalJobId == \"" + global_id + "\" &&" + \
         " pegasus_wf_uuid == \"" + wf_id + "\" &&" + \
-        " pegasus_wf_dax_job_id == \""+ job_id + "\"'" + \
+        " pegasus_wf_dag_job_id == \""+ job_id + "\"'" + \
         " -autoformat GlobalJobId | grep " + global_id
     proc = Popen(cmd, stdout=PIPE, shell=True)
     results = filter(None, proc.communicate()[0].split("\n"))
@@ -266,11 +289,22 @@ class Provisioner():
     def __init__(self, vm_limit=32):
         self.vm_limit = vm_limit # user input
         self.budget = 0
-        self.machines = []
-        self.timestamp = None
+        self.timestamp = datetime.now()
         
         self.workflow = Workflow()
         self.entries = {}
+        
+        manager = Machine()
+        manager.status = MachineStatus.manager
+        manager.condor_slot = 'local'
+        self.machines = [manager]
+        
+        boot_entry = ScheduleEntry(Job('boot', None), manager, self.timestamp, self.timestamp)
+        boot_entry.real_start = self.timestamp
+        boot_entry.real_end = self.timestamp
+        boot_entry.status = EntryStatus.completed
+        self.entries[manager] = [boot_entry]
+        
         
     def add_workflow(self, workflow_dir, prediction_file, budget):
         TIMER.tick('before add_workflow')
@@ -283,8 +317,6 @@ class Provisioner():
         self.update_budget_timestamp()
         
         # completed and running entries will not change
-        #_entries = [e for e in self.entries if e.status != EntryStatus.scheduled]
-        
         _entries = {m:[e for e in l if e.status != EntryStatus.scheduled] for m,l in self.entries.iteritems()}
 
         # Max number of vms
@@ -292,7 +324,7 @@ class Provisioner():
         
         # Get the number of machines to be used
         entries, cost, n = number_of_machines(self.workflow, self.machines, _entries, nmax, self.timestamp, self.budget)
-        
+     
         # Delay boot entries and remove unused machines
         if entries != None:
             _machines = entries.keys()
@@ -302,6 +334,7 @@ class Provisioner():
                     # there's more than only a boot entry
                     if len(entries[m]) <= 1:
                         entries.pop(m, None)
+                    # TODO there's enough time between entries to turn off the machine 
                     # there's time between the boot and first entry
                     elif entries[m][0].sched_end < entries[m][1].sched_start:
                         entries[m][0].sched_end = entries[m][1].sched_start
@@ -310,7 +343,6 @@ class Provisioner():
         # Update schedule
         self.entries = entries
         TIMER.tick('after update_schedule')
-
 
     def update_budget_timestamp(self):
         timestamp = datetime.now()
@@ -343,6 +375,9 @@ class Provisioner():
     
     def deallocate_vms(self):
         for m in self.machines:
+            if m.status == MachineStatus.manager:
+                continue
+            
             # if there's no more budget or
             # if there's nothing executing or scheduled to the machine
             if self.entries == None or len([e for e in self.entries[m] if e.status != EntryStatus.completed]) == 0:
@@ -361,12 +396,15 @@ class Provisioner():
     
     def sync_machines(self):
         running_machines = [m for m in self.machines if m.status == MachineStatus.running]
-        for s in condor_slots():
+        allocating_machines = [m for m in self.machines if m.status == MachineStatus.allocating]
+        allocating_machines.sort(key=lambda x: self.entries[x][0].sched_start)
+        i = 0
+        slots = condor_slots()
+        for s in slots:
             if s not in [m.condor_slot for m in running_machines]:
-                allocating_machines = [m for m in self.machines if m.status == MachineStatus.allocating]
-                if len(allocating_machines) > 0:
+                if len(allocating_machines[i:]) > 0:
                     # update machine
-                    allocated_machine = allocating_machines[0]
+                    allocated_machine = allocating_machines[i]
                     allocated_machine.status = MachineStatus.running
                     allocated_machine.condor_slot = s
                     
@@ -375,8 +413,9 @@ class Provisioner():
                     boot_entry.real_end = self.timestamp
                     boot_entry.status = EntryStatus.completed
                 
+                    i += 1
                     print "++Machine", str(allocated_machine)
-    
+
     def sync_jobs(self):
         # New jobs
         lines = condor_q()
@@ -386,29 +425,35 @@ class Provisioner():
         ne = len([e for e in _entries if e.status == EntryStatus.executing])
         nc = len([e for e in _entries if e.status == EntryStatus.completed])
         print '[Q: %d S: %d E: %d C: %d]' % (nq,ns,ne,nc)
-                                              
+                              
+        scheduled_entries = [e for e in _entries if e.status == EntryStatus.scheduled]
+                
         for l in lines:
-            global_id, wf_id, job_id = l.split(" ")
+            global_id, wf_id, dag_job_id = l.split(" ")
             
-            for e in [e for e in _entries if e.status == EntryStatus.scheduled
-                                                and e.job.id == job_id
-                                                and e.job.wf_id == wf_id]:
+            for e in [e for e in scheduled_entries if e.job.dag_job_id == dag_job_id \
+                                                    and e.job.wf_id == wf_id]:
                 # if the target machine is ready
-                if e.machine.status == MachineStatus.running and \
+                if (e.machine.status == MachineStatus.running or e.machine.status == MachineStatus.manager) and\
                         len([x for x in self.entries[e.machine] if x.status == EntryStatus.executing]) == 0:
                     e.status = EntryStatus.executing
                     e.job.global_id = global_id
                     e.real_start = self.timestamp
-                    condor_qedit(global_id, wf_id, job_id, e.machine.condor_slot)
+                    if not e.job.is_pegasus_job():
+                        condor_qedit(global_id, wf_id, dag_job_id, e.machine.condor_slot)
                     
-                    print "++Job", e.job.name, job_id
+                    print "++Job", dag_job_id
+                    
+                    sync_parents(e.job, scheduled_entries, self.timestamp)
                     
         # Completed jobs
         for e in [e for e in _entries if e.status == EntryStatus.executing]:
-            if condor_job_completed(e.job.global_id, e.job.wf_id, e.job.id):
+            if condor_job_completed(e.job.global_id, e.job.wf_id, e.job.dag_job_id):
                 e.status = EntryStatus.completed
+                if e.real_start == None:
+                    e.real_start = self.timestamp
                 e.real_end = self.timestamp
-                print "--Job", e.job.name, e.job.id
+                print "--Job", e.job.dag_job_id
         
         condor_reschedule()
              

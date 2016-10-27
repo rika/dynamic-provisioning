@@ -9,13 +9,14 @@ class Machine():
             id = str(uuid.uuid4().get_hex())
         self.id = id
         self.status = MachineStatus.scheduled
-        self.condor_slot = ""
+        self.condor_slot = "new slot"
         
     
     def __str__(self):
         return "S" + str(self.id)
     
 class MachineStatus():
+    manager = 0
     scheduled = 1
     allocating = 2
     running = 3

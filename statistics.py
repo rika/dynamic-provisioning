@@ -16,12 +16,11 @@ def dump_stat(path, data, headers):
 
 class Statistics():
     def __init__(self):
-        self.created_at = datetime.now()
         self.numbers = []
         self.scheds = []
         self.entries = []
         
-    def snapshot(self, provisioner):
+    def snapshot(self, timestamp, provisioner):
         entries = {x for v in provisioner.entries.itervalues() for x in v} 
         
         # Number of jobs in execution
@@ -31,22 +30,24 @@ class Statistics():
         nma = len([m for m in provisioner.machines if m.status == MachineStatus.allocating])
         nmr = len([m for m in provisioner.machines if m.status == MachineStatus.running])
         
-        timestamp = (datetime.now() - self.created_at).seconds
         self.numbers.append((timestamp, nj, nma, nmr))
 
-    def schedshot(self, budget, cost, wf_end):
-        timestamp = (datetime.now() - self.created_at).seconds
+    def schedshot(self, timestamp, budget, cost, wf_end):
         self.scheds.append((timestamp, budget, cost, wf_end))
         
     def jobs(self, provisioner):
         for m,l in provisioner.entries.iteritems():
             for e in l:
-                self.entries.append((m.id, m.condor_slot, e.job.wf_id, e.job.id, e.job.name,  \
+                if e.real_end == None or e.real_start == None:
+                    duration = None
+                else:
+                    duration = (e.real_end - e.real_start).seconds
+                self.entries.append((m.id, m.condor_slot, e.job.wf_id, e.job.dag_job_id,  \
                                      e.sched_start, \
                                      e.sched_end, \
                                      e.real_start, \
                                      e.real_end, \
-                                     (e.real_end - e.real_start).seconds))
+                                     duration))
      
     def dump(self):
         home = os.path.expanduser('~')
@@ -65,6 +66,6 @@ class Statistics():
         dump_stat(path, self.scheds, headers)
 
         path = os.path.join(directory, 'jobs.csv')
-        headers = ['machine', 'slot', 'workflow', 'job_id', 'job_name', 'sched_start', 'sched_end', 'real_start', 'real_end', 'duration']
+        headers = ['machine', 'slot', 'workflow', 'dag_job_id', 'sched_start', 'sched_end', 'real_start', 'real_end', 'duration']
         dump_stat(path, self.entries, headers)
         
