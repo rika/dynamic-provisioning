@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
+
 import sys
 import socket
 from _socket import timeout
@@ -7,7 +8,7 @@ from common import PORT
 
 from monitor import Monitor
 from provisioner import Provisioner
-from provisioner import sched_cost_pred
+from schedule import sched_cost_pred
 from statistics import Statistics
 
 TIMEOUT = 5
@@ -39,10 +40,12 @@ def main(local=False):
     server_socket.settimeout(TIMEOUT)
     
     # Wait for connections until receive a stop message
-    stop = False
-    while(not stop):
-        ## Update time
-        
+    done = False
+    while(True):
+        if done and ((monitor != None and monitor.logwatcher.watching_none()) \
+                or (monitor == None and provisioner.logwatcher.watching_none())):
+            break
+                
         try:
             client_socket, _addr = server_socket.accept()
             msg = receive(client_socket)
@@ -50,7 +53,7 @@ def main(local=False):
 
             # Stop server
             if '--stop' in msgs[0]:
-                stop = True
+                done = True
             elif len(msgs) == 1:
                 if monitor != None:
                     raise Exception("Only one workflow can be monitored at a time")
@@ -61,7 +64,7 @@ def main(local=False):
                 monitor.add_workflow(wf_dir)
                 
             else:
-                if provisioner.monitor == True:
+                if monitor != None:
                     raise Exception("Only one workflow can be monitored at a time")
                 
                 provisioner.update_budget_timestamp()
@@ -90,7 +93,7 @@ def main(local=False):
                 # Resched?
                 
                 # Statistics
-                cost_pred, wf_end = sched_cost_pred(provisioner.machines, provisioner.entries, provisioner.timestamp)
+                cost_pred, wf_end = sched_cost_pred(provisioner.machines, provisioner.schedule, provisioner.timestamp)
                 statistics.schedshot(provisioner.timestamp, provisioner.budget, cost_pred, wf_end)
                 statistics.snapshot(provisioner.timestamp, provisioner)
             else:
@@ -99,10 +102,11 @@ def main(local=False):
                 monitor.sync_jobs()
     
     if monitor == None:
-        entries = {x for v in provisioner.entries.itervalues() for x in v}
-        statistics.jobs(entries)
+        entries = provisioner.schedule.entries
     else:
-        statistics.jobs(monitor.entries)
+        entries = monitor.entries
+    
+    statistics.jobs(entries)
     statistics.dump()
     print("stop message received")
     

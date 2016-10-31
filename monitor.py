@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+# coding: utf-8
 
 from datetime import datetime
 
@@ -5,17 +7,17 @@ from job import Job
 from machine import Machine
 from machine import MachineStatus
 from workflow import Workflow
-from schedule_entry import ScheduleEntry
+from schedule_entry import ScheduleEntry 
 from schedule_entry import EntryStatus
 from condor import condor_slots
-from condor import condor_q
-from condor import condor_job_completed
-from provisioner import sync_parents
+from condor import condor_history
+from logwatcher import LogWatcher, LogKey
 
 class Monitor():
     def __init__(self):
         self.workflow = Workflow()
         self.creation_timestamp = self.timestamp = datetime.now()
+        self.logwatcher = LogWatcher()
         
         manager = Machine()
         manager.status = MachineStatus.manager
@@ -27,11 +29,11 @@ class Monitor():
         boot_entry.real_end = self.timestamp
         boot_entry.status = EntryStatus.completed
         self.entries = [boot_entry]
+        self.entries_cid = {}
         
     def add_workflow(self, workflow_dir):
         self.workflow.add_workflow(workflow_dir)
-        for job in self.workflow.jobs:
-            self.entries.append(ScheduleEntry(job, None, None, None))
+        self.logwatcher.add(workflow_dir)
             
     def sync_machines(self):
         slots = condor_slots()
@@ -47,40 +49,30 @@ class Monitor():
                 boot_entry.status = EntryStatus.completed
                 self.entries.append(boot_entry)
                 self.machines.append(machine)
-                print "++Machine", machine, str(s)
+                print "++Machine", s
                 
     def sync_jobs(self):
-        lines = condor_q(2) # running jobs
-        nq = len(lines)
-        ns = len([e for e in self.entries if e.status == EntryStatus.scheduled])
-        ne = len([e for e in self.entries if e.status == EntryStatus.executing])
-        nc = len([e for e in self.entries if e.status == EntryStatus.completed])
-        print '[Q: %d S: %d E: %d C: %d]' % (nq,ns,ne,nc)
-        for l in lines:
-            global_id, wf_id, dag_job_id, host = l.split(" ")
-            machines = [m for m in self.machines if m.condor_slot == host]
-            if len(machines) > 0:
-                machine = machines[0]
+        log_entries = self.logwatcher.nexts()
+        for le in log_entries:
+            if le.id in self.entries_cid: # in dict keys
+                entry = self.entries_cid[le.id]
             else:
-                machine = self.machines[0] #manager
+                entry = ScheduleEntry(condor_id=le.id)
+                self.entries.append(entry)
+                self.entries_cid[le.id] = entry
                 
-            for entry in [e for e in self.entries if e.job.dag_job_id == dag_job_id \
-                                                    and e.job.wf_id == wf_id]:
-                entry.status = EntryStatus.executing
-                entry.job.global_id = global_id
-                entry.real_start = self.timestamp
-                entry.machine = machine
-                print "++Job", dag_job_id
-                sync_parents(e.job, self.entries, self.timestamp)
-        
-        # completed jobs
-        for e in [e for e in self.entries if e.status == EntryStatus.executing]:
-            if condor_job_completed(e.job.global_id, e.job.wf_id, e.job.dag_job_id):
-                e.status = EntryStatus.completed
-                if e.real_start == None:
-                    e.real_start = self.timestamp
-                e.real_end = self.timestamp
-                print "--Job", e.job.dag_job_id
-    
+            entry.log[le.event] = le.timestamp
+            
+            if le.event == LogKey.submit:
+                print "++Job", le.id
+            elif le.event == LogKey.post_script_terminated:
+                wf_id, dag_job_id, slot = condor_history(le.id)
+                
+                job = next((j for j in self.workflow.jobs if j.dag_job_id == dag_job_id and j.wf_id == wf_id), None)
+                if job:
+                    entry.job = job
+                    entry.host = next((m for m in self.machines if m.condor_slot == slot), None)
+                    print "--Job", le.id, dag_job_id, slot
+            
     def update_timestamp(self):
         self.timestamp = datetime.now()

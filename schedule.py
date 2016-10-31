@@ -1,0 +1,270 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+from math import ceil
+
+from schedule_entry import ScheduleEntry, EntryStatus, LogKey
+from machine import Machine, MachineStatus
+from job import Job
+from sets import Set
+
+from common import VM_COST_PER_SEC, VM_BOOTTIME
+
+from time import time
+
+DEBUG = True
+class Timer():
+    def __init__(self):
+        self.t = time()
+        
+    def tick(self, msg=""):
+        if DEBUG:
+            _t = time()
+            print "%.2f [ %s ]" % ((_t - self.t), msg)
+            self.t = _t
+TIMER = Timer()
+
+def job_ready_at(job, schedule, timestamp):
+    # job is ready when parent jobs finish executing
+    _t = timestamp
+    for e in schedule.entries:
+        if e.job in job.parents:
+            _t = max([_t, e.end()])
+
+    return _t
+
+def e_entry(job, machine, machine_entries_list, ready_at):
+    # machine is free?
+    if len(machine_entries_list) == 0:
+        return ScheduleEntry(job, machine, ready_at, ready_at + job.pduration)
+    
+    # if is not free
+    # get earlist possible entry in the machine
+    sched_entry = None
+    it = iter(machine_entries_list) #ordered
+    before = next(it)
+    while(sched_entry is None): 
+        start = max([before.end(), ready_at])
+        end = start + job.pduration
+        
+        # sched before next
+        try:
+            after = next(it)
+            if (end < after.start()):
+                sched_entry = ScheduleEntry(job, machine, start, end)
+            
+            before = after
+        
+        # there's no next        
+        except(StopIteration):
+            sched_entry = ScheduleEntry(job, machine, start, end)
+    
+    return sched_entry
+
+def earliest_entry(job, machines, schedule, timestamp):
+    """
+    Get the earlist entry possible for job to execute in the machines
+    after the given timestamp.
+    :param job: job to be executed
+    :param machines: possible machines to host the job
+    :paramm timestamp: job will execute after this timestamp
+    :return e_entry: earlist entry
+    """
+    ready_at = job_ready_at(job, schedule, timestamp)
+    if job.is_pegasus_job():
+        return e_entry(job, machines[0], schedule.entries_host[machines[0]], ready_at)
+    else:
+        e_entries = [e_entry(job, machine, schedule.entries_host[machine], ready_at) for machine in machines[1:]]
+        return min(e_entries, key=lambda x: (x.end(), -len(schedule.entries_host[x.host])))
+    
+
+def get_nmax(workflow, machines, schedule, vm_limit, timestamp):
+    """
+    Get the max number of machines that can be used by a workflow,
+    based on the current state of the workflow execution.
+    :param workflow: workflow structure
+    :param machines: list of allocated machines
+    :param entries: state of the execution
+    :param timestamp: barrier timestamp
+    :return n: max number of machines that can be used
+    """
+    TIMER.tick('before get_nmax')
+    _machines = list(machines)
+    _schedule = Schedule(schedule)
+    
+    # insertion policy
+    need_new_host = True
+    for job in workflow.ranked_jobs:
+        
+        if need_new_host:
+            # last machine added was used, so we need to add a new one
+            # if we there's still room to add it else we stop
+            if len(_machines) < vm_limit:
+                new_machine = Machine()
+                boot_entry = ScheduleEntry(None, new_machine, timestamp, timestamp+VM_BOOTTIME)
+                _schedule.add_entry_host(boot_entry, new_machine)
+                _machines.append(new_machine)
+            else:
+                break
+        
+        # schedule with the new machine
+        new_entry = earliest_entry(job, _machines, _schedule, timestamp)
+        _schedule.add_entry_host(new_entry, new_entry.host)
+        
+        # machine was used?
+        if new_entry.host == new_machine:
+            need_new_host = True
+        else:
+            need_new_host = False
+
+    # last machine added wasn't used
+    if need_new_host == False:
+        _machines = _machines[:-1]
+        
+    TIMER.tick('after get_nmax')                
+    return len(_machines)
+
+def sched_wf(workflow, machines, schedule, timestamp):
+    """
+    Schedule the workflow along the machines.
+    :param workflow: workflow structure
+    :param machines: list of allocated machines 
+    :param execution: state of the execution
+    :param timestamp: barrier timestamp
+    """
+    # insertion policy
+    for job in workflow.ranked_jobs:
+        entry = earliest_entry(job, machines, schedule, timestamp)
+        schedule.add_entry_host(entry, entry.host)
+        
+def sched_cost_pred(machines, schedule, timestamp):
+    # cost calculation
+    
+    vm_runtime = 0
+    # manager
+    wf_end = max(timestamp, schedule.entries_host[machines[0]][-1].end())
+    vm_runtime = vm_runtime + (wf_end - timestamp).seconds
+        
+    for machine in machines[1:]:
+        # machine is running until last job scheduled in the machine
+        start = max(timestamp, schedule.entries_host[machine][0].start())
+        finish = max(timestamp, schedule.entries_host[machine][-1].end())
+        wf_end = max(wf_end, finish)
+        vm_runtime = vm_runtime + (finish - start).seconds 
+    
+    if vm_runtime == 0:
+        wf_end = None
+
+    return vm_runtime * VM_COST_PER_SEC, wf_end
+    
+def sched_cost_n(workflow, machines, schedule, n, timestamp):
+    """
+    Return the cost used by n machines from timestamp untill end of execution.
+    """
+    # existing machines
+    _machines = list(machines)
+    _schedule = Schedule(schedule)
+    
+    # new machine + boot
+    for _i in range(n-len(_machines)):
+        machine = Machine()
+        _machines.append(machine)
+        boot_job = Job('boot', None)
+        boot_job.pduration = VM_BOOTTIME
+        boot_entry = ScheduleEntry(boot_job, machine, timestamp, timestamp+VM_BOOTTIME)
+        _schedule.add_entry_host(boot_entry, machine)
+    
+    TIMER.tick("before sched")    
+    sched_wf(workflow, _machines, _schedule, timestamp)
+    TIMER.tick("after sched")
+    
+    _schedule.fix_machines()
+    cost_pred, _wf_end = sched_cost_pred(_machines, _schedule, timestamp)
+    return _schedule, cost_pred
+
+'''
+class BudgetException(Exception):
+    pass
+'''
+
+def sched_number_of_machines(workflow, machines, schedule, nmax, timestamp, budget):
+    TIMER.tick('before number of machines')
+    _schedules = {}
+    costs = {}
+    
+    lowerb = 1 # manager
+    upperb = nmax # supoem nmax > 0
+    found = False
+
+    while not found:
+        i = int(ceil((lowerb + upperb) / 2.0))
+        _schedules[i], costs[i] = sched_cost_n(workflow, machines, schedule, i, timestamp)
+        if costs[i] < budget: #satisfied
+            lowerb = i
+        else:
+            upperb = i-1
+        if lowerb == upperb:
+            found = True
+    if lowerb == 1:
+        #raise BudgetException("Not enough budget.")
+        return None, costs[i], i # i is 2
+    
+    TIMER.tick('after number of machines')
+    return _schedules[lowerb], costs[lowerb], lowerb
+
+def insert_entry(sorted_entries, new_entry):
+    i = 0
+    for e in sorted_entries:
+        if e.end() > new_entry.end():
+            break
+        i = i + 1
+    sorted_entries.insert(i, new_entry)
+
+class Schedule():
+    def __init__(self, schedule=None):
+        if schedule:
+            self.entries = Set(schedule.entries)
+            self.entries_cid = dict(schedule.entries_cid)
+            self.entries_host = {h:list(l) for (h,l) in schedule.entries_host.items()}
+        else:
+            self.entries = Set()
+            self.entries_cid = {}
+            self.entries_host = {}
+    
+    def add_entry_host(self, entry, host):
+        if host not in self.entries_host:
+            self.entries_host[host] = []
+        insert_entry(self.entries_host[host], entry)
+        self.entries.add(entry)
+    
+    def add_entry_cid(self, entry, condor_id):
+        print 'adding ', condor_id
+        self.entries_cid[condor_id] = entry
+        self.entries.add(entry)
+    
+    def rm_scheduled_entries(self):
+        self.entries = Set([e for e in self.entries if e.status != EntryStatus.scheduled])
+        self.entries_cid = {e.condor_id:e for e in self.entries}
+        items = self.entries_host.items()
+        self.entries_host = {}
+        for machine, entries in items:
+            entries = [e for e in entries if e.status != EntryStatus.scheduled]
+            if len(entries) > 0:
+                self.entries_host[machine] = entries
+
+    def fix_machines(self):
+        # Delay boot entries and remove unused machines
+        _machines = self.entries_host.keys()
+        for m in _machines:
+            # machine has not been allocated yet
+            if m.status == MachineStatus.scheduled:
+                # remove if there's only a boot entry
+                if len(self.entries_host[m]) <= 1:
+                    self.entries_host.pop(m, None)
+                    
+                # TODO there's enough time between entries to turn off the machine 
+                
+                # there's time between the boot and first entry
+                elif self.entries_host[m][0].end() < self.entries_host[m][1].start():
+                    self.entries_host[m][0].log[LogKey.sched_end] = self.entries_host[m][1].start()
+                    self.entries_host[m][0].log[LogKey.sched_start] = self.entries_host[m][1].start() - self.entries_host[m][0].job.pduration

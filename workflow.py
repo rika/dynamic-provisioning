@@ -1,14 +1,12 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-import sys
 import os
-
 import glob
-#from xml.etree import ElementTree as ET
-from job import Job
 from datetime import timedelta
+#from xml.etree import ElementTree as ET
 
+from job import Job
 
 def parse_dag(workflow_dir):
     cwd = os.getcwd()

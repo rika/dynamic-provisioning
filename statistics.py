@@ -1,11 +1,11 @@
+#!/usr/bin/env python
+# coding: utf-8
 
 import os
 import csv
-from datetime import datetime
 
 from schedule_entry import EntryStatus
 from machine import MachineStatus
-
 
 def dump_stat(path, data, headers):
     with open(path, 'w') as out:
@@ -21,7 +21,7 @@ class Statistics():
         self.entries = []
         
     def snapshot(self, timestamp, provisioner):
-        entries = {x for v in provisioner.entries.itervalues() for x in v} 
+        entries = provisioner.schedule.entries 
         
         # Number of jobs in execution
         nj = len([e for e in entries if e.status == EntryStatus.executing])
@@ -37,23 +37,20 @@ class Statistics():
         
     def jobs(self, entries):
         for e in entries:
-            if e.real_end == None or e.real_start == None:
-                duration = None
+            if e.host != None:
+                host_id = e.host.id
+                condor_slot = e.host.condor_slot
             else:
-                duration = (e.real_end - e.real_start).seconds
-                
-            if e.machine != None:
-                machine_id = e.machine.id
-                condor_slot = e.machine.condor_slot
+                host_id = condor_slot = None
+            
+            if e.job != None:
+                wf_id = e.job.wf_id
+                dag_job_id = e.job.dag_job_id
             else:
-                machine_id = condor_slot = None
-                
-            self.entries.append((machine_id, condor_slot, e.job.wf_id, e.job.dag_job_id,  \
-                                 e.sched_start, \
-                                 e.sched_end, \
-                                 e.real_start, \
-                                 e.real_end, \
-                                 duration))
+                wf_id = dag_job_id = None
+            
+            for event in e.log.keys():
+                self.entries.append((host_id, condor_slot, wf_id, dag_job_id, e.condor_id, event, e.log[event]))
      
     def dump(self):
         home = os.path.expanduser('~')
@@ -72,6 +69,6 @@ class Statistics():
         dump_stat(path, self.scheds, headers)
 
         path = os.path.join(directory, 'jobs.csv')
-        headers = ['machine', 'slot', 'workflow', 'dag_job_id', 'sched_start', 'sched_end', 'real_start', 'real_end', 'duration']
+        headers = ['host', 'slot', 'workflow', 'dag_job_id','condor_id', 'event', 'timestamp']
         dump_stat(path, self.entries, headers)
         

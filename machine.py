@@ -4,10 +4,10 @@
 import uuid
 
 class Machine():
-    def __init__(self, id=None):
-        if id == None:
-            id = str(uuid.uuid4().get_hex())
-        self.id = id
+    def __init__(self, machine_id=None):
+        if machine_id == None:
+            self.id = str(uuid.uuid4().get_hex())
+        self.id = machine_id
         self.status = MachineStatus.scheduled
         self.condor_slot = "new slot"
         

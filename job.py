@@ -5,9 +5,9 @@ class Job:
     def __init__(self, dag_job_id, wf_id):
         self.dag_job_id = dag_job_id
         self.wf_id = wf_id
-        self.global_id = None
         self.parents = []
         self.children = []
+        self.pduration = 0
 
     def is_pegasus_job(self):
         if self.dag_job_id.startswith('create_dir') or \

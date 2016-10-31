@@ -1,5 +1,9 @@
+#!/usr/bin/env python
+# coding: utf-8
+
 from subprocess import Popen
 from subprocess import PIPE
+
 
 ''' JobStatus
 0    Unexpanded     U
@@ -9,44 +13,48 @@ from subprocess import PIPE
 4    Completed      C
 5    Held           H
 6    Submission_err E
+
 '''
              
 def condor_slots():
-    cmd = 'condor_status -autoformat Name'
+    cmd = "condor_status -format '%s ' Name"
     proc = Popen(cmd, stdout=PIPE, shell=True)
-    results = proc.communicate()[0].split("\n")
-    return filter(None, results)
+    return filter(None, proc.communicate()[0].split())
 
-def condor_q(JobStatus):
-    cmd = "condor_q -constraint 'JobStatus == "+str(JobStatus)+"' -format '%s ' GlobalJobId -format '%s ' pegasus_wf_uuid -format '%s ' pegasus_wf_dag_job_id -format '%s\n' RemoteHost |awk '{ gsub(/\"/, \"\"); print $1\" \"$2\" \"$3\" \"$4;  }'"
+def condor_q(condor_id):
+    cmd = "condor_q -constraint 'ClusterId == "+str(condor_id)+"' -format '%s ' pegasus_wf_uuid -format '%s ' pegasus_wf_dag_job_id -format '%s' RemoteHost" 
+    proc = Popen(cmd, stdout=PIPE, shell=True)
+    result = proc.communicate()[0].split()
+    if len(result) == 2:
+        result.append('')
+    return result
+
+def condor_history(condor_id):
+    cmd = "condor_history -constraint 'ClusterId == "+str(condor_id)+"' -format '%s ' pegasus_wf_uuid -format '%s ' pegasus_wf_dag_job_id -format '%s' LastRemoteHost" 
+    proc = Popen(cmd, stdout=PIPE, shell=True)
+    result = proc.communicate()[0].split()
+    if len(result) == 2:
+        result.append('')
+    return result
+
+def condor_idle():
+    cmd = "condor_q -constraint 'JobStatus == 1' -format '%s ' ClusterId -format '%s ' pegasus_wf_uuid -format '%s\n' pegasus_wf_dag_job_id"
     proc = Popen(cmd, stdout=PIPE, shell=True)
     return filter(None, proc.communicate()[0].split("\n"))
 
-def condor_qedit(global_id, wf_id, dag_job_id, target_machine):
+def condor_qedit(condor_id, wf_id, dag_job_id, target_machine):
     cmd = "condor_qedit -constraint 'JobStatus == 1 &&" + \
-        " GlobalJobId == \"" + global_id + "\" &&" + \
+        " ClusterId == " + condor_id + " &&" + \
         " pegasus_wf_uuid == \"" + wf_id + "\" &&" + \
         " pegasus_wf_dag_job_id == \""+ dag_job_id + "\"'" + \
         " Requirements '( ( Target.Name== \""+ target_machine +"\" ) )'"
     proc = Popen(cmd, stdout=PIPE, shell=True)
     if proc.communicate()[0] != 'Set attribute "Requirements".\n':
         raise Exception("condor_qedit failed")
-    
 
-def condor_job_completed(global_id, wf_id, job_id):
-    cmd = "condor_history -constraint 'JobStatus == 4 &&" + \
-        " GlobalJobId == \"" + global_id + "\" &&" + \
-        " pegasus_wf_uuid == \"" + wf_id + "\" &&" + \
-        " pegasus_wf_dag_job_id == \""+ job_id + "\"'" + \
-        " -autoformat GlobalJobId | grep " + global_id
-    proc = Popen(cmd, stdout=PIPE, shell=True)
-    results = filter(None, proc.communicate()[0].split("\n"))
-    if len(results) == 0:
-        return False
-    else:
-        return True
-    
 def condor_reschedule():
     cmd = "condor_reschedule"
     proc = Popen(cmd, stdout=PIPE, shell=True)
     proc.communicate()
+    
+
