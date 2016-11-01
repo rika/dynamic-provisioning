@@ -61,7 +61,9 @@ class LogKey():
     post_script_failure = 'POST_SCRIPT_FAILURE'       # post script failed.
 
 class LogEntry():
-    def __init__(self, line):
+    def __init__(self, wf_id, line):
+        self.wf_id = wf_id
+
         keys = line.split()
         self.timestamp = datetime.fromtimestamp(float(keys[L_TIME]))
         self.event = keys[L_EVENT]
@@ -73,38 +75,38 @@ class LogEntry():
          
 class LogWatcher():
     def __init__(self):
-        self.fps = []
+        self.wf_log = []
         self.waiting = []
     
-    def add(self, wf_dir):
+    def add(self, wf_id, wf_dir):
         path = os.path.join(wf_dir, JOBSTATE_FILENAME)
         if os.path.isfile(path):
-            self.fps.append(open(path,'r'))
+            self.wf_log.append((wf_id, open(path,'r')))
         else:
-            self.waiting.append(path)
+            self.waiting.append((wf_id, path))
     
     def nexts(self):
         # add waiting path
-        ready = [path for path in self.waiting if os.path.isfile(path)]
+        ready = [(wf_id, path) for (wf_id, path) in self.waiting if os.path.isfile(path)]
         if len(ready) > 0:
-            self.waiting = [path for path in self.waiting if path not in ready]
-            for path in ready:
-                self.fps.append(open(path,'r'))
+            self.waiting = [item for item in self.waiting if item not in ready]
+            for (wf_id, path) in ready:
+                self.wf_log.append((wf_id, open(path,'r')))
         
         # get new lines
         entries = []
         done = []
-        for fp in self.fps:
+        for (wf_id, fp) in self.wf_log:
             for line in fp.readlines():
                 if 'INTERNAL' in line:
                     if 'FINISHED' in line:
-                        done.append(fp)
+                        done.append((wf_id, fp))
                 else:
-                    entry = LogEntry(line)
+                    entry = LogEntry(wf_id, line)
                     if entry.id != '0':
                         entries.append(entry)
-        self.fps = [fp for fp in self.fps if fp not in done]
+        self.wf_log = [item for item in self.wf_log if item not in done]
         return entries
     
     def watching_none(self):
-        return (len(self.fps) == 0)
+        return (len(self.wf_log) == 0)

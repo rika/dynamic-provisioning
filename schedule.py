@@ -12,7 +12,7 @@ from common import VM_COST_PER_SEC, VM_BOOTTIME
 
 from time import time
 
-DEBUG = True
+DEBUG = False
 class Timer():
     def __init__(self):
         self.t = time()
@@ -94,7 +94,10 @@ def get_nmax(workflow, machines, schedule, vm_limit, timestamp):
     
     # insertion policy
     need_new_host = True
+    done_jobs = [e.job for e in schedule.entries if e.job != None]
     for job in workflow.ranked_jobs:
+        if job in done_jobs:
+            continue
         
         if need_new_host:
             # last machine added was used, so we need to add a new one
@@ -132,10 +135,12 @@ def sched_wf(workflow, machines, schedule, timestamp):
     :param execution: state of the execution
     :param timestamp: barrier timestamp
     """
+    done_jobs = [e.job for e in schedule.entries if e.job != None]
     # insertion policy
     for job in workflow.ranked_jobs:
-        entry = earliest_entry(job, machines, schedule, timestamp)
-        schedule.add_entry_host(entry, entry.host)
+        if job not in done_jobs:
+            entry = earliest_entry(job, machines, schedule, timestamp)
+            schedule.add_entry_host(entry, entry.host)
         
 def sched_cost_pred(machines, schedule, timestamp):
     # cost calculation
@@ -162,17 +167,24 @@ def sched_cost_n(workflow, machines, schedule, n, timestamp):
     Return the cost used by n machines from timestamp untill end of execution.
     """
     # existing machines
-    _machines = list(machines)
     _schedule = Schedule(schedule)
     
-    # new machine + boot
-    for _i in range(n-len(_machines)):
-        machine = Machine()
-        _machines.append(machine)
-        boot_job = Job('boot', None)
-        boot_job.pduration = VM_BOOTTIME
-        boot_entry = ScheduleEntry(boot_job, machine, timestamp, timestamp+VM_BOOTTIME)
-        _schedule.add_entry_host(boot_entry, machine)
+    if len(machines) < n:
+        _machines = list(machines)
+        # new machine + boot
+        for _i in range(n-len(_machines)):
+            machine = Machine()
+            _machines.append(machine)
+            boot_job = Job('boot', None)
+            boot_job.pduration = VM_BOOTTIME
+            boot_entry = ScheduleEntry(boot_job, machine, timestamp, timestamp+VM_BOOTTIME)
+            _schedule.add_entry_host(boot_entry, machine)
+    else:
+        # don't use spare machines
+        _machines = sorted(machines[1:], key=lambda m: schedule.entries_host[m][-1].end(), reverse=True)
+        for _i in range(len(_machines)-n):
+            _machines.pop()
+        _machines.insert(0, machines[0]) # manager
     
     TIMER.tick("before sched")    
     sched_wf(workflow, _machines, _schedule, timestamp)
@@ -182,10 +194,8 @@ def sched_cost_n(workflow, machines, schedule, n, timestamp):
     cost_pred, _wf_end = sched_cost_pred(_machines, _schedule, timestamp)
     return _schedule, cost_pred
 
-'''
 class BudgetException(Exception):
     pass
-'''
 
 def sched_number_of_machines(workflow, machines, schedule, nmax, timestamp, budget):
     TIMER.tick('before number of machines')
@@ -205,9 +215,9 @@ def sched_number_of_machines(workflow, machines, schedule, nmax, timestamp, budg
             upperb = i-1
         if lowerb == upperb:
             found = True
-    if lowerb == 1:
-        #raise BudgetException("Not enough budget.")
-        return None, costs[i], i # i is 2
+    #if lowerb == 1:
+        #raise BudgetException("Not enough budget, min cost is: " + str(costs[i]))
+        #return _schedules[i], costs[i], i # i is 2
     
     TIMER.tick('after number of machines')
     return _schedules[lowerb], costs[lowerb], lowerb
@@ -237,14 +247,15 @@ class Schedule():
         insert_entry(self.entries_host[host], entry)
         self.entries.add(entry)
     
-    def add_entry_cid(self, entry, condor_id):
-        print 'adding ', condor_id
-        self.entries_cid[condor_id] = entry
+    def add_entry_cid(self, entry):
+        if entry.condor_id == None:
+            raise Exception('Entry missing condor id')
+        self.entries_cid[entry.condor_id] = entry
         self.entries.add(entry)
     
     def rm_scheduled_entries(self):
         self.entries = Set([e for e in self.entries if e.status != EntryStatus.scheduled])
-        self.entries_cid = {e.condor_id:e for e in self.entries}
+        self.entries_cid = {cid:e for (cid,e) in self.entries_cid.items() if e.status != EntryStatus.scheduled}
         items = self.entries_host.items()
         self.entries_host = {}
         for machine, entries in items:

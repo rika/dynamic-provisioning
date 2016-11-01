@@ -38,7 +38,7 @@ def parse_dag(workflow_dir):
                 jobs[child].parents.append(jobs[parent])
                 jobs[parent].children.append(jobs[child])
 
-    return jobs.values()
+    return wf_id, jobs.values()
 '''
 def parse_dax(workflow_dir):
     cwd = os.getcwd()
@@ -121,12 +121,17 @@ class Workflow():
         self.jobs = []
     
     def add_workflow(self, workflow_dir, prediction_file=None):
-        jobs = parse_dag(workflow_dir)
+        wf_id, jobs = parse_dag(workflow_dir)
         self.jobs = self.jobs + jobs
         
         if prediction_file != None:
             parse_predictions(prediction_file, self.jobs)
             self.ranked_jobs = rank_jobs(self.jobs)
         
+        return wf_id
 
- 
+    def has_jobs_to_sched(self, schedule):
+        done_jobs = [e.job for e in schedule.entries if e.job != None]
+        not_done = len([j for j in self.jobs if j not in done_jobs])
+        print not_done, '/', len(done_jobs)
+        return not_done > 0

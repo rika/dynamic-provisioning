@@ -7,13 +7,18 @@ class Machine():
     def __init__(self, machine_id=None):
         if machine_id == None:
             self.id = str(uuid.uuid4().get_hex())
-        self.id = machine_id
+        else:
+            self.id = machine_id
         self.status = MachineStatus.scheduled
         self.condor_slot = "new slot"
-        
     
-    def __str__(self):
-        return "S" + str(self.id)
+    def allocate(self):
+        print 'allocating', self.id
+        self.status = MachineStatus.allocating
+
+    def deallocate(self):
+        print 'deallocating', self.id
+        self.status = MachineStatus.deallocating
     
 class MachineStatus():
     manager = 0

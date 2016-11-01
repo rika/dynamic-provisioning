@@ -32,8 +32,8 @@ class Monitor():
         self.entries_cid = {}
         
     def add_workflow(self, workflow_dir):
-        self.workflow.add_workflow(workflow_dir)
-        self.logwatcher.add(workflow_dir)
+        wf_id = self.workflow.add_workflow(workflow_dir)
+        self.logwatcher.add(wf_id, workflow_dir)
             
     def sync_machines(self):
         slots = condor_slots()
@@ -44,8 +44,8 @@ class Monitor():
                 machine.condor_slot = s
                 boot_job = Job('boot', None)
                 boot_entry = ScheduleEntry(boot_job, machine, None, None)
-                boot_entry.real_start = self.creation_timestamp
-                boot_entry.real_end = self.timestamp
+                boot_entry.log[LogKey.real_start] = self.creation_timestamp
+                boot_entry.log[LogKey.real_end] = self.timestamp
                 boot_entry.status = EntryStatus.completed
                 self.entries.append(boot_entry)
                 self.machines.append(machine)
@@ -65,14 +65,14 @@ class Monitor():
             
             if le.event == LogKey.submit:
                 print "++Job", le.id
-            elif le.event == LogKey.post_script_terminated:
+            elif le.event == LogKey.job_terminated:
                 wf_id, dag_job_id, slot = condor_history(le.id)
                 
                 job = next((j for j in self.workflow.jobs if j.dag_job_id == dag_job_id and j.wf_id == wf_id), None)
                 if job:
                     entry.job = job
-                    entry.host = next((m for m in self.machines if m.condor_slot == slot), None)
-                    print "--Job", le.id, dag_job_id, slot
+                    entry.host = next((m for m in self.machines if m.condor_slot == slot), self.machines[0])
+                    print "--Job", le.id, dag_job_id, entry.host.condor_slot
             
     def update_timestamp(self):
         self.timestamp = datetime.now()

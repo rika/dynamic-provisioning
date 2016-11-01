@@ -1,15 +1,14 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-import sys
 import socket
 from _socket import timeout
 from common import PORT
 
 from monitor import Monitor
 from provisioner import Provisioner
-from schedule import sched_cost_pred
 from statistics import Statistics
+import argparse
 
 TIMEOUT = 5
 
@@ -28,8 +27,8 @@ def receive(client_socket):
 
 
 
-def main(local=False):
-    provisioner = Provisioner(vm_limit=3)
+def main(vm_limit, local=False):
+    provisioner = Provisioner(vm_limit+1) #+manager
     monitor = None
     statistics = Statistics()
     
@@ -87,15 +86,13 @@ def main(local=False):
                 provisioner.deallocate_vms()
                 provisioner.sync_machines()
                 
-                # Update and sync jobs
-                provisioner.sync_jobs()
-                
-                # Resched?
+                # Update, sync jobs, may reschedule
+                provisioner.update_jobs()
                 
                 # Statistics
-                cost_pred, wf_end = sched_cost_pred(provisioner.machines, provisioner.schedule, provisioner.timestamp)
-                statistics.schedshot(provisioner.timestamp, provisioner.budget, cost_pred, wf_end)
-                statistics.snapshot(provisioner.timestamp, provisioner)
+                provisioner.update_wf_pred()
+                statistics.schedshot(provisioner)
+                statistics.snapshot(provisioner)
             else:
                 monitor.update_timestamp()
                 monitor.sync_machines()
@@ -111,7 +108,8 @@ def main(local=False):
     print("stop message received")
     
 if __name__ == '__main__':
-    if len(sys.argv) > 1 and (sys.argv[1] == '--local' or sys.argv[1] == '-l'):
-        main(local=True)
-    else:
-        main()
+    parser = argparse.ArgumentParser(description='Provisioner server')
+    parser.add_argument('-n', '--vm_limit', type=int, default=1)
+    parser.add_argument('-l', '--local', action='store_true')
+    args = parser.parse_args()
+    main(args.vm_limit, args.local)

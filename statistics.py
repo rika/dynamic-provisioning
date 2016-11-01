@@ -20,20 +20,21 @@ class Statistics():
         self.scheds = []
         self.entries = []
         
-    def snapshot(self, timestamp, provisioner):
+    def snapshot(self, provisioner):
         entries = provisioner.schedule.entries 
         
-        # Number of jobs in execution
-        nj = len([e for e in entries if e.status == EntryStatus.executing])
+        # Number of jobs in scheduled/execution
+        njs = len([e for e in entries if e.status == EntryStatus.scheduled])
+        nje = len([e for e in entries if e.status == EntryStatus.executing])
         
-        # Number of machines
+        # Number of machines allocating/running
         nma = len([m for m in provisioner.machines if m.status == MachineStatus.allocating])
         nmr = len([m for m in provisioner.machines if m.status == MachineStatus.running])
         
-        self.numbers.append((timestamp, nj, nma, nmr))
+        self.numbers.append((provisioner.timestamp, njs, nje, nma, nmr))
 
-    def schedshot(self, timestamp, budget, cost, wf_end):
-        self.scheds.append((timestamp, budget, cost, wf_end))
+    def schedshot(self, provisioner):
+        self.scheds.append((provisioner.timestamp, provisioner.budget, provisioner.cost_pred, provisioner.wf_end))
         
     def jobs(self, entries):
         for e in entries:
@@ -50,7 +51,8 @@ class Statistics():
                 wf_id = dag_job_id = None
             
             for event in e.log.keys():
-                self.entries.append((host_id, condor_slot, wf_id, dag_job_id, e.condor_id, event, e.log[event]))
+                if e.log[event]:
+                    self.entries.append((host_id, condor_slot, wf_id, dag_job_id, e.condor_id, event, e.log[event]))
      
     def dump(self):
         home = os.path.expanduser('~')
@@ -61,7 +63,7 @@ class Statistics():
         print 'Writing statistics in ' + str(directory)
         
         path = os.path.join(directory, 'numbers.csv')
-        headers = ['timestamp','n_jobs','n_machines_a','n_machines_r']
+        headers = ['timestamp','n_jobs_s','n_jobs_e','n_machines_a','n_machines_r']
         dump_stat(path, self.numbers, headers)
                 
         path = os.path.join(directory, 'budget.csv')

@@ -31,7 +31,7 @@ def send(msg):
     client_socket.close()
     
 def main():
-    parser = argparse.ArgumentParser(description='Manage the scheduler')
+    parser = argparse.ArgumentParser(description='Manage the provisioner')
     
     parser.add_argument('-r', '--run', action='store_true', help='run the workflow')
     parser.add_argument('-w', '--wait', action='store_true', help='wait for the workflow to finish and send stop message')
