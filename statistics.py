@@ -56,7 +56,7 @@ class Statistics():
      
     def dump(self):
         home = os.path.expanduser('~')
-        directory = os.path.join(home, '.dynamic_provision')
+        directory = os.path.join(home, '.dynamic_provisioning')
         if not os.path.exists(directory):
             os.makedirs(directory)
         
