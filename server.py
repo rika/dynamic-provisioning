@@ -9,6 +9,7 @@ from monitor import Monitor
 from provisioner import Provisioner
 from statistics import Statistics
 import argparse
+import sys
 
 TIMEOUT = 5
 
@@ -97,7 +98,9 @@ def main(vm_limit, local=False):
                 monitor.update_timestamp()
                 monitor.sync_machines()
                 monitor.sync_jobs()
-    
+                
+        sys.stdout.flush()
+        
     if monitor == None:
         entries = provisioner.schedule.entries
     else:
