@@ -79,7 +79,7 @@ def main(vm_limit, local=False):
             client_socket.close()
         except timeout:
             
-            if monitor == None:
+            if monitor == None and provisioner.workflow.jobs:
                 provisioner.update_budget_timestamp()
                 
                 # Update and sync vms
@@ -94,7 +94,7 @@ def main(vm_limit, local=False):
                 provisioner.update_wf_pred()
                 statistics.schedshot(provisioner)
                 statistics.snapshot(provisioner)
-            else:
+            elif monitor and monitor.workflow.jobs:
                 monitor.update_timestamp()
                 monitor.sync_machines()
                 monitor.sync_jobs()
