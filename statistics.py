@@ -55,11 +55,19 @@ class Statistics():
                 if e.log[event]:
                     self.entries.append((host_id, condor_slot, wf_id, dag_job_id, e.condor_id, event, e.log[event]))
             
+            d = {}
             if dag_job_id and 'EXECUTE' in e.log.keys() and 'JOB_TERMINATED' in e.log.keys() and 'SUBMIT' in e.log.keys():
-                self.durations.append((dag_job_id,
-                                       (e.log['JOB_TERMINATED'] - e.log['EXECUTE']).total_seconds(),
-                                       (e.log['EXECUTE'] - e.log['SUBMIT']).total_seconds(),
-                                       (e.log['JOB_TERMINATED'] - e.log['SUBMIT']).total_seconds()))
+                parts = dag_job_id.split('_')
+                if len(parts) == 2: 
+                    jt = parts[0]
+                    d[jt] = [
+                        (d[jt][0] if jt in d.keys() else 0) +1,
+                        (d[jt][1] if jt in d.keys() else 0) +(e.log['JOB_TERMINATED'] - e.log['EXECUTE']).total_seconds(),
+                        (d[jt][2] if jt in d.keys() else 0) +(e.log['EXECUTE']        - e.log['SUBMIT']).total_seconds(),
+                        (d[jt][3] if jt in d.keys() else 0) +(e.log['JOB_TERMINATED'] - e.log['SUBMIT']).total_seconds(),
+                    ]
+            for jt in d.keys(): 
+                self.durations.append(jt, d[jt][1]*1.0 / d[jt][0], d[jt][2]*1.0 / d[jt][0], d[jt][3]*1.0 / d[jt][0])
             
     def dump(self):
         home = os.path.expanduser('~')

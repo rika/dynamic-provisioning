@@ -39,7 +39,7 @@ def parse_dag(workflow_dir):
                 jobs[child].parents.append(jobs[parent])
                 jobs[parent].children.append(jobs[child])
 
-    return wf_id, jobs
+    return wf_id, jobs.values()
 '''
 def parse_dax(workflow_dir):
     cwd = os.getcwd()
@@ -84,15 +84,21 @@ def parse_dax(workflow_dir):
 def parse_predictions(predfile, jobs):
     with open(predfile) as pred:
         reader = csv.reader(pred, delimiter=',')
+        avg_exec = {}
         for row in reader:
             print row
             try:
                 duration = int(row[1].split('.')[0])
-                jobs[row[0]].pduration = timedelta(seconds=duration)
+                avg_exec[row[0]] = timedelta(seconds=duration)
             except ValueError:
                 print 'ValueError'
                 pass
-    
+            
+        for job in jobs:
+            for jt in avg_exec.keys():
+                if jt in job.dag_job_id:
+                    job.pduration = avg_exec[jt]
+                    break
 
 def visit(job, visited):
     visited[job] = True
@@ -129,7 +135,7 @@ class Workflow():
         if prediction_file:
             parse_predictions(prediction_file, jobs)
         
-        self.jobs = self.jobs + jobs.values()
+        self.jobs = self.jobs + jobs
         if prediction_file:
             self.ranked_jobs = rank_jobs(self.jobs)
         return wf_id
