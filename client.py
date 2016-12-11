@@ -49,7 +49,7 @@ def main():
         if args.dir is None:
             raise Exception('missing option --dir')
         if args.pred is None or args.budget is None:
-            msg = args.dir
+            msg = os.path.abspath(args.dir)
         else:
             if not os.path.isdir(args.dir):
                 raise Exception('error: invalid workflow directory')
