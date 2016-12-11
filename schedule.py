@@ -74,10 +74,7 @@ def earliest_entry(job, machines, schedule, timestamp):
     if job.is_pegasus_job():
         return e_entry(job, machines[0], schedule.entries_host[machines[0]], ready_at)
     else:
-        print job.dag_job_id
         e_entries = [e_entry(job, machine, schedule.entries_host[machine], ready_at) for machine in machines[1:]]
-        for e in e_entries:
-            print '  ', e.host.id, e.start(), e.end()
         return min(e_entries, key=lambda x: (x.end(), -len(schedule.entries_host[x.host])))
     
 
@@ -111,7 +108,6 @@ def get_nmax(workflow, machines, schedule, vm_limit, timestamp, local):
             # last machine added was used, so we need to add a new one
             # if we there's still room to add it else we stop
             if len(_machines) < vm_limit:
-                print "ADD HOST"
                 
                 new_machine = Machine()
                 boot_entry = ScheduleEntry(None, new_machine, timestamp, timestamp+vm_boottime)
@@ -123,10 +119,6 @@ def get_nmax(workflow, machines, schedule, vm_limit, timestamp, local):
         # schedule with the new machine
         new_entry = earliest_entry(job, _machines, _schedule, timestamp)
         _schedule.add_entry_host(new_entry, new_entry.host)
-        for key in _schedule.entries_host.keys():
-            print key, len(_schedule.entries_host[key])
-            for e in _schedule.entries_host[key]:
-                print e.job.dag_job_id if e.job != None else None, e.start(), e.end()
         #raw_input("\nPress Enter to continue...")
         # machine was used?
         if new_entry.host == new_machine:
@@ -136,7 +128,6 @@ def get_nmax(workflow, machines, schedule, vm_limit, timestamp, local):
 
     # last machine added wasn't used
     if need_new_host == False:
-        print "DISCART LAST HOST"
         _machines = _machines[:-1]
         
     TIMER.tick('after get_nmax')                

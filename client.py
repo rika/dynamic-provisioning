@@ -61,7 +61,7 @@ def main():
                 raise Exception('error: invalid budget')
         
             # Ok
-            msg = args.dir +' '+ args.pred +' '+ args.budget
+            msg = os.path.abspath(args.dir) +' '+ os.path.abspath(args.pred) +' '+ args.budget
 
     # Send
     send(msg)
