@@ -67,7 +67,7 @@ class Statistics():
                         (d[jt][3] if jt in d.keys() else 0) +(e.log['JOB_TERMINATED'] - e.log['SUBMIT']).total_seconds(),
                     ]
             for jt in d.keys(): 
-                self.durations.append(jt, d[jt][1]*1.0 / d[jt][0], d[jt][2]*1.0 / d[jt][0], d[jt][3]*1.0 / d[jt][0])
+                self.durations.append((jt, d[jt][1]*1.0 / d[jt][0], d[jt][2]*1.0 / d[jt][0], d[jt][3]*1.0 / d[jt][0]))
             
     def dump(self):
         home = os.path.expanduser('~')
