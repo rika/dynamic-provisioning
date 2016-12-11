@@ -19,6 +19,7 @@ class Statistics():
         self.numbers = []
         self.scheds = []
         self.entries = []
+        self.durations = [] 
         
     def snapshot(self, provisioner):
         entries = provisioner.schedule.entries 
@@ -53,7 +54,13 @@ class Statistics():
             for event in e.log.keys():
                 if e.log[event]:
                     self.entries.append((host_id, condor_slot, wf_id, dag_job_id, e.condor_id, event, e.log[event]))
-     
+            
+            if dag_job_id and 'EXECUTE' in e.log.keys() and 'JOB_TERMINATED' in e.log.keys() and 'SUBMIT' in e.log.keys():
+                self.durations.append((dag_job_id,
+                                       (e.log['JOB_TERMINATED'] - e.log['EXECUTE']).total_seconds(),
+                                       (e.log['EXECUTE'] - e.log['SUBMIT']).total_seconds(),
+                                       (e.log['JOB_TERMINATED'] - e.log['SUBMIT']).total_seconds()))
+            
     def dump(self):
         home = os.path.expanduser('~')
         directory = os.path.join(home, '.dynamic_provisioning')
@@ -73,4 +80,8 @@ class Statistics():
         path = os.path.join(directory, 'jobs.csv')
         headers = ['host', 'slot', 'workflow', 'dag_job_id','condor_id', 'event', 'timestamp']
         dump_stat(path, self.entries, headers)
+
+        path = os.path.join(directory, 'durations.csv')
+        headers = ['job', 'execute_time', 'queue_time', 'total_time']
+        dump_stat(path, self.durations, headers)
         

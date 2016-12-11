@@ -7,7 +7,7 @@ class Job:
         self.wf_id = wf_id
         self.parents = []
         self.children = []
-        self.pduration = 0
+        self.pduration = None
 
     def is_pegasus_job(self):
         if self.dag_job_id.startswith('create_dir') or \

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+import socket
 from datetime import datetime
 
 from workflow import Workflow
@@ -17,13 +18,14 @@ from condor import condor_reschedule
 from logwatcher import LogWatcher, LogKey
 from schedule import sched_number_of_machines, get_nmax, Schedule,\
     sched_cost_pred
+from precip.experiment import AzureExperiment
 
 from common import VM_COST_PER_SEC
 
 SCHED_TIMEOUT = 30 # seconds
 
 class Provisioner():
-    def __init__(self, vm_limit=32):
+    def __init__(self, vm_limit, azure_config, skip_setup, local):
         self.vm_limit = vm_limit # user input
         self.budget = 0
         self.timestamp = datetime.now()
@@ -47,7 +49,15 @@ class Provisioner():
         boot_entry.real_start = self.timestamp
         boot_entry.real_end = self.timestamp
         boot_entry.status = EntryStatus.completed
-        self.schedule.add_entry_host(boot_entry, manager)        
+        self.schedule.add_entry_host(boot_entry, manager)
+        
+        if azure_config and not local:
+            hostname = socket.gethostname()
+            self.exp = AzureExperiment(azure_config, skip_setup=skip_setup, name=hostname)
+            self.master_addr = socket.gethostbyname(hostname)
+            self.user = azure_config.admin_username
+        else:
+            self.exp = self.master_addr = self.user = None
         
     def add_workflow(self, workflow_dir, prediction_file, budget):
         self.budget = self.budget + int(budget)
@@ -65,10 +75,12 @@ class Provisioner():
         if self.workflow.has_jobs_to_sched(self.schedule):
             # Max number of vms
             nmax = get_nmax(self.workflow, self.machines, self.schedule, self.vm_limit, self.timestamp)
-            
+
             # Get the number of machines to be used
             schedule, _cost, _n = sched_number_of_machines(self.workflow, self.machines, self.schedule, nmax, self.timestamp, self.budget)
-                         
+            
+            print '>>>>', len(schedule.entries_host.keys())
+            
             # Update schedule
             self.schedule = schedule
 
@@ -92,7 +104,7 @@ class Provisioner():
             for m in self.schedule.entries_host.keys():
                 entry = self.schedule.entries_host[m][0]
                 if entry.status == EntryStatus.scheduled and entry.start() <= self.timestamp:
-                    m.allocate()
+                    m.allocate(self.exp, self.master_addr, self.user)
                     
                     self.machines.append(m)
                     entry.status = EntryStatus.executing
@@ -107,7 +119,7 @@ class Provisioner():
             # if there's no more budget or
             # if there's nothing executing or scheduled to the machine
             if self.schedule == None or len([e for e in self.schedule.entries_host[m] if e.status != EntryStatus.completed]) == 0:
-                m.deallocate()
+                m.deallocate(self.exp)
                 print "--Machine", m.id
                 
         # update machine list

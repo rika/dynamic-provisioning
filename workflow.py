@@ -7,6 +7,7 @@ from datetime import timedelta
 #from xml.etree import ElementTree as ET
 
 from job import Job
+import csv
 
 def parse_dag(workflow_dir):
     cwd = os.getcwd()
@@ -38,7 +39,7 @@ def parse_dag(workflow_dir):
                 jobs[child].parents.append(jobs[parent])
                 jobs[parent].children.append(jobs[child])
 
-    return wf_id, jobs.values()
+    return wf_id, jobs
 '''
 def parse_dax(workflow_dir):
     cwd = os.getcwd()
@@ -81,14 +82,17 @@ def parse_dax(workflow_dir):
     return jobs.values()
 '''    
 def parse_predictions(predfile, jobs):
-    for job in jobs:
-        job.pduration = timedelta(seconds=1)
-    '''
     with open(predfile) as pred:
-        for line in pred:
-            id, pduration_str = line.split(' ')
-            jobs[id].pduration = float(pduration_str)
-    '''
+        reader = csv.reader(pred, delimiter=',')
+        for row in reader:
+            print row
+            try:
+                duration = int(row[1].split('.')[0])
+                jobs[row[0]].pduration = timedelta(seconds=duration)
+            except ValueError:
+                print 'ValueError'
+                pass
+    
 
 def visit(job, visited):
     visited[job] = True
@@ -120,14 +124,12 @@ class Workflow():
     def __init__(self):
         self.jobs = []
     
-    def add_workflow(self, workflow_dir, prediction_file=None):
+    def add_workflow(self, workflow_dir, prediction_file):
         wf_id, jobs = parse_dag(workflow_dir)
-        self.jobs = self.jobs + jobs
+        parse_predictions(prediction_file, jobs)
         
-        if prediction_file != None:
-            parse_predictions(prediction_file, self.jobs)
-            self.ranked_jobs = rank_jobs(self.jobs)
-        
+        self.jobs = self.jobs + jobs.values()
+        self.ranked_jobs = rank_jobs(self.jobs)
         return wf_id
 
     def has_jobs_to_sched(self, schedule):

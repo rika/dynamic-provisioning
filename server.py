@@ -10,6 +10,7 @@ from provisioner import Provisioner
 from statistics import Statistics
 import argparse
 import sys
+from azure_config import AzureConfig
 
 TIMEOUT = 5
 
@@ -28,8 +29,12 @@ def receive(client_socket):
 
 
 
-def main(vm_limit, local=False):
-    provisioner = Provisioner(vm_limit+1) #+manager
+def main(vm_limit, config_path, skip_setup, local):
+    azure_config = None
+    if config_path:
+        azure_config = AzureConfig(config_path)
+       
+    provisioner = Provisioner(vm_limit+1, azure_config, skip_setup, local) #+manager
     monitor = None
     statistics = Statistics()
     
@@ -112,7 +117,9 @@ def main(vm_limit, local=False):
     
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Provisioner server')
-    parser.add_argument('-n', '--vm_limit', type=int, default=1)
-    parser.add_argument('-l', '--local', action='store_true')
+    parser.add_argument('-n', '--vm_limit', type=int, default=32)
+    parser.add_argument('-l', '--local', action='store_true', default=False)
+    parser.add_argument('-c', '--config_path', help='azure config path')
+    parser.add_argument('-s', '--skip_setup', action='store_true', default=True)
     args = parser.parse_args()
-    main(args.vm_limit, args.local)
+    main(args.vm_limit, args.config_path, args.skip_setup, args.local)

@@ -2,6 +2,15 @@
 # coding: utf-8
 
 import uuid
+import threading
+
+def _allocate(exp, name, master_addr, user):
+    exp.provision(tags=[name], has_public_ip=False)
+    exp.wait(tags=[name])
+    #setup
+    exp.put([name], 'worker.sh', '/tmp/worker.sh', user=user)
+    exp.run([name], 'sudo chmod 777 /tmp/worker.sh && sudo /tmp/worker.sh '+master_addr, user=user)
+
 
 class Machine():
     def __init__(self, machine_id=None):
@@ -12,12 +21,31 @@ class Machine():
         self.status = MachineStatus.scheduled
         self.condor_slot = "new slot"
     
-    def allocate(self):
+    def allocate(self, exp, master_addr, user):
         print 'allocating', self.id
+        if exp:
+            self.azure_allocate_thread = threading.Thread(
+                target=_allocate,
+                args=(
+                    exp,
+                    self.id,
+                    master_addr,
+                    user,
+                ),
+            )
+            self.azure_allocate_thread.start()
         self.status = MachineStatus.allocating
 
-    def deallocate(self):
+    def deallocate(self, exp):
         print 'deallocating', self.id
+        if exp:
+            self.azure_deallocate_thread = threading.Thread(
+                target=exp.deprovision,
+                args=(
+                    [self.id],
+                ),
+            )
+            self.azure_deallocate_thread.start()
         self.status = MachineStatus.deallocating
     
 class MachineStatus():
