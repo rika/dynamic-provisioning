@@ -60,12 +60,14 @@ class Statistics():
                 parts = dag_job_id.split('_')
                 if len(parts) == 2: 
                     jt = parts[0]
-                    d[jt] = [
-                        (d[jt][0] if jt in d.keys() else 0) +1,
-                        (d[jt][1] if jt in d.keys() else 0) +(e.log['JOB_TERMINATED'] - e.log['EXECUTE']).total_seconds(),
-                        (d[jt][2] if jt in d.keys() else 0) +(e.log['EXECUTE']        - e.log['SUBMIT']).total_seconds(),
-                        (d[jt][3] if jt in d.keys() else 0) +(e.log['JOB_TERMINATED'] - e.log['SUBMIT']).total_seconds(),
-                    ]
+                else:
+                    jt = '_'.join(parts[:2])
+                d[jt] = [
+                    (d[jt][0] if jt in d.keys() else 0) +1,
+                    (d[jt][1] if jt in d.keys() else 0) +(e.log['JOB_TERMINATED'] - e.log['EXECUTE']).total_seconds(),
+                    (d[jt][2] if jt in d.keys() else 0) +(e.log['EXECUTE']        - e.log['SUBMIT']).total_seconds(),
+                    (d[jt][3] if jt in d.keys() else 0) +(e.log['JOB_TERMINATED'] - e.log['SUBMIT']).total_seconds(),
+                ]
             for jt in d.keys(): 
                 self.durations.append((jt, d[jt][1]*1.0 / d[jt][0], d[jt][2]*1.0 / d[jt][0], d[jt][3]*1.0 / d[jt][0]))
             
