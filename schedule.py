@@ -81,7 +81,7 @@ def earliest_entry(job, machines, schedule, timestamp):
         return min(e_entries, key=lambda x: (x.end(), -len(schedule.entries_host[x.host])))
     
 
-def get_nmax(workflow, machines, schedule, vm_limit, timestamp):
+def get_nmax(workflow, machines, schedule, vm_limit, timestamp, local):
     """
     Get the max number of machines that can be used by a workflow,
     based on the current state of the workflow execution.
@@ -91,6 +91,11 @@ def get_nmax(workflow, machines, schedule, vm_limit, timestamp):
     :param timestamp: barrier timestamp
     :return n: max number of machines that can be used
     """
+    if local:
+        vm_boottime = 1
+    else:
+        vm_boottime = VM_BOOTTIME
+    
     TIMER.tick('before get_nmax')
     _machines = list(machines)
     _schedule = Schedule(schedule)
@@ -109,7 +114,7 @@ def get_nmax(workflow, machines, schedule, vm_limit, timestamp):
                 print "ADD HOST"
                 
                 new_machine = Machine()
-                boot_entry = ScheduleEntry(None, new_machine, timestamp, timestamp+VM_BOOTTIME)
+                boot_entry = ScheduleEntry(None, new_machine, timestamp, timestamp+vm_boottime)
                 _schedule.add_entry_host(boot_entry, new_machine)
                 _machines.append(new_machine)
             else:
@@ -172,10 +177,15 @@ def sched_cost_pred(machines, schedule, timestamp):
 
     return vm_runtime * VM_COST_PER_SEC, wf_end
     
-def sched_cost_n(workflow, machines, schedule, n, timestamp):
+def sched_cost_n(workflow, machines, schedule, n, timestamp, local):
     """
     Return the cost used by n machines from timestamp untill end of execution.
     """
+    if local:
+        vm_boottime = 1
+    else:
+        vm_boottime = VM_BOOTTIME
+    
     # existing machines
     _schedule = Schedule(schedule)
     
@@ -186,8 +196,8 @@ def sched_cost_n(workflow, machines, schedule, n, timestamp):
             machine = Machine()
             _machines.append(machine)
             boot_job = Job('boot', None)
-            boot_job.pduration = VM_BOOTTIME
-            boot_entry = ScheduleEntry(boot_job, machine, timestamp, timestamp+VM_BOOTTIME)
+            boot_job.pduration = vm_boottime
+            boot_entry = ScheduleEntry(boot_job, machine, timestamp, timestamp+vm_boottime)
             _schedule.add_entry_host(boot_entry, machine)
     else:
         # don't use spare machines
@@ -207,7 +217,7 @@ def sched_cost_n(workflow, machines, schedule, n, timestamp):
 class BudgetException(Exception):
     pass
 
-def sched_number_of_machines(workflow, machines, schedule, nmax, timestamp, budget):
+def sched_number_of_machines(workflow, machines, schedule, nmax, timestamp, budget, local):
     TIMER.tick('before number of machines')
     _schedules = {}
     costs = {}
@@ -218,7 +228,7 @@ def sched_number_of_machines(workflow, machines, schedule, nmax, timestamp, budg
 
     while not found:
         i = int(ceil((lowerb + upperb) / 2.0))
-        _schedules[i], costs[i] = sched_cost_n(workflow, machines, schedule, i, timestamp)
+        _schedules[i], costs[i] = sched_cost_n(workflow, machines, schedule, i, timestamp, local)
         if costs[i] < budget: #satisfied
             lowerb = i
         else:

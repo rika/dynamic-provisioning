@@ -51,6 +51,7 @@ class Provisioner():
         boot_entry.status = EntryStatus.completed
         self.schedule.add_entry_host(boot_entry, manager)
         
+        self.local = local
         if azure_config and not local:
             hostname = socket.gethostname()
             self.exp = AzureExperiment(azure_config, skip_setup=skip_setup, name=hostname)
@@ -74,12 +75,10 @@ class Provisioner():
 
         if self.workflow.has_jobs_to_sched(self.schedule):
             # Max number of vms
-            nmax = get_nmax(self.workflow, self.machines, self.schedule, self.vm_limit, self.timestamp)
+            nmax = get_nmax(self.workflow, self.machines, self.schedule, self.vm_limit, self.timestamp, self.local)
 
             # Get the number of machines to be used
-            schedule, _cost, _n = sched_number_of_machines(self.workflow, self.machines, self.schedule, nmax, self.timestamp, self.budget)
-            
-            print '>>>>', len(schedule.entries_host.keys())
+            schedule, _cost, _n = sched_number_of_machines(self.workflow, self.machines, self.schedule, nmax, self.timestamp, self.budget, self.local)
             
             # Update schedule
             self.schedule = schedule
