@@ -124,12 +124,14 @@ class Workflow():
     def __init__(self):
         self.jobs = []
     
-    def add_workflow(self, workflow_dir, prediction_file):
+    def add_workflow(self, workflow_dir, prediction_file=None):
         wf_id, jobs = parse_dag(workflow_dir)
-        parse_predictions(prediction_file, jobs)
+        if prediction_file:
+            parse_predictions(prediction_file, jobs)
         
         self.jobs = self.jobs + jobs.values()
-        self.ranked_jobs = rank_jobs(self.jobs)
+        if prediction_file:
+            self.ranked_jobs = rank_jobs(self.jobs)
         return wf_id
 
     def has_jobs_to_sched(self, schedule):
