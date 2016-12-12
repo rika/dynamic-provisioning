@@ -60,12 +60,14 @@ class Monitor():
                 entry = ScheduleEntry(condor_id=le.id)
                 self.entries.append(entry)
                 self.entries_cid[le.id] = entry
+                print "++Job", le.id
                 
             entry.log[le.event] = le.timestamp
             
-            if le.event == LogKey.submit:
-                print "++Job", le.id
+            if le.event == LogKey.execute:
+                le.status = EntryStatus.executing
             elif le.event == LogKey.job_terminated:
+                le.status = EntryStatus.completed
                 wf_id, dag_job_id, slot = condor_history(le.id)
                 
                 job = next((j for j in self.workflow.jobs if j.dag_job_id == dag_job_id and j.wf_id == wf_id), None)

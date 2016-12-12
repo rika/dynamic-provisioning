@@ -98,11 +98,12 @@ def main(vm_limit, config_path, skip_setup, local):
                 # Statistics
                 provisioner.update_wf_pred()
                 statistics.schedshot(provisioner)
-                statistics.snapshot(provisioner)
+                statistics.snapshot(provisioner.timestamp, provisioner.entries, provisioner.machines)
             elif monitor and monitor.workflow.jobs:
                 monitor.update_timestamp()
                 monitor.sync_machines()
                 monitor.sync_jobs()
+                statistics.snapshot(monitor.timestamp, monitor.entries, monitor.machines)
                 
         sys.stdout.flush()
         

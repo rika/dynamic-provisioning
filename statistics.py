@@ -21,18 +21,18 @@ class Statistics():
         self.entries = []
         self.durations = [] 
         
-    def snapshot(self, provisioner):
-        entries = provisioner.schedule.entries 
-        
+    def snapshot(self, timestamp, entries, machines):
+            
         # Number of jobs in scheduled/execution
         njs = len([e for e in entries if e.status == EntryStatus.scheduled])
         nje = len([e for e in entries if e.status == EntryStatus.executing])
         
         # Number of machines allocating/running
-        nma = len([m for m in provisioner.machines if m.status == MachineStatus.allocating])
-        nmr = len([m for m in provisioner.machines if m.status == MachineStatus.running])
-        
-        self.numbers.append((provisioner.timestamp, njs, nje, nma, nmr))
+        nma = len([m for m in machines if m.status == MachineStatus.allocating])
+        nmr = len([m for m in machines if m.status == MachineStatus.running])
+            
+        self.numbers.append((timestamp, njs, nje, nma, nmr))
+            
 
     def schedshot(self, provisioner):
         self.scheds.append((provisioner.timestamp, provisioner.budget, provisioner.cost_pred, provisioner.wf_end))
