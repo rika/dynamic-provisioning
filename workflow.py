@@ -88,7 +88,7 @@ def parse_predictions(predfile, jobs):
         for row in reader:
             print row
             try:
-                duration = int(row[1].split('.')[0])
+                duration = round(float(row[1]))
                 avg_exec[row[0]] = timedelta(seconds=duration)
             except ValueError:
                 print 'ValueError'
