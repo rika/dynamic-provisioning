@@ -3,13 +3,16 @@
 
 import uuid
 import threading
+import os 
+
 
 def _allocate(exp, name, master_addr, user):
     exp.provision(tags=[name], has_public_ip=False)
     exp.wait(tags=[name])
     #setup
-    exp.put([name], 'worker.sh', '/tmp/worker.sh', user=user)
-    exp.run([name], 'sudo chmod 777 /tmp/worker.sh && sudo /tmp/worker.sh '+master_addr, user=user)
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+    exp.put([name], os.path.join(dir_path,'worker.sh'), '/tmp/worker.sh', user=user, priv=True)
+    exp.run([name], 'sudo chmod 777 /tmp/worker.sh && sudo /tmp/worker.sh '+master_addr, user=user, priv=True)
 
 
 class Machine():
