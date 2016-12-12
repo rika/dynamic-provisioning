@@ -65,9 +65,9 @@ class Monitor():
             entry.log[le.event] = le.timestamp
             
             if le.event == LogKey.execute:
-                le.status = EntryStatus.executing
+                entry.status = EntryStatus.executing
             elif le.event == LogKey.job_terminated:
-                le.status = EntryStatus.completed
+                entry.status = EntryStatus.completed
                 wf_id, dag_job_id, slot = condor_history(le.id)
                 
                 job = next((j for j in self.workflow.jobs if j.dag_job_id == dag_job_id and j.wf_id == wf_id), None)
