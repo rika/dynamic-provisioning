@@ -38,6 +38,7 @@ class Statistics():
         self.scheds.append((provisioner.timestamp, provisioner.budget, provisioner.cost_pred, provisioner.wf_end))
         
     def jobs(self, entries):
+        d = {}
         for e in entries:
             if e.host != None:
                 host_id = e.host.id
@@ -55,7 +56,6 @@ class Statistics():
                 if e.log[event]:
                     self.entries.append((host_id, condor_slot, wf_id, dag_job_id, e.condor_id, event, e.log[event]))
             
-            d = {}
             if dag_job_id and 'EXECUTE' in e.log.keys() and 'JOB_TERMINATED' in e.log.keys() and 'SUBMIT' in e.log.keys():
                 parts = dag_job_id.split('_')
                 if len(parts) == 2: 
@@ -68,8 +68,8 @@ class Statistics():
                     (d[jt][2] if jt in d.keys() else 0) +(e.log['EXECUTE']        - e.log['SUBMIT']).total_seconds(),
                     (d[jt][3] if jt in d.keys() else 0) +(e.log['JOB_TERMINATED'] - e.log['SUBMIT']).total_seconds(),
                 ]
-            for jt in d.keys(): 
-                self.durations.append((jt, d[jt][1]*1.0 / d[jt][0], d[jt][2]*1.0 / d[jt][0], d[jt][3]*1.0 / d[jt][0]))
+        for jt in d.keys(): 
+            self.durations.append((jt, d[jt][1]*1.0 / d[jt][0], d[jt][2]*1.0 / d[jt][0], d[jt][3]*1.0 / d[jt][0], d[jt][0]))
             
     def dump(self):
         home = os.path.expanduser('~')
@@ -92,6 +92,6 @@ class Statistics():
         dump_stat(path, self.entries, headers)
 
         path = os.path.join(directory, 'durations.csv')
-        headers = ['job', 'execute_time', 'queue_time', 'total_time']
+        headers = ['job', 'execute_time', 'queue_time', 'total_time', 'n']
         dump_stat(path, self.durations, headers)
         
