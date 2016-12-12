@@ -4,6 +4,7 @@
 import socket
 from _socket import timeout
 from common import PORT
+import time
 
 from monitor import Monitor
 from provisioner import Provisioner
@@ -11,6 +12,8 @@ from statistics import Statistics
 import argparse
 import sys
 from azure_config import AzureConfig
+from schedule import BudgetException
+from condor import condor_rm_jobs
 
 TIMEOUT = 5
 
@@ -79,7 +82,12 @@ def main(vm_limit, config_path, skip_setup, local):
                 pred = msgs[1]
                 budget = msgs[2] 
                 provisioner.add_workflow(wf_dir, prediction_file=pred, budget=budget)
-                provisioner.update_schedule()
+                try:
+                    provisioner.update_schedule()
+                except BudgetException:
+                    done = True
+                    time.sleep(4)
+                    condor_rm_jobs()
 
             client_socket.close()
         except timeout:
@@ -93,12 +101,17 @@ def main(vm_limit, config_path, skip_setup, local):
                 provisioner.sync_machines()
                 
                 # Update, sync jobs, may reschedule
-                provisioner.update_jobs()
+                try:
+                    provisioner.update_jobs()
+                except BudgetException:
+                    done = True
+                    condor_rm_jobs()
                 
                 # Statistics
                 provisioner.update_wf_pred()
                 statistics.schedshot(provisioner)
                 statistics.snapshot(provisioner.timestamp, provisioner.schedule.entries, provisioner.machines)
+                
             elif monitor and monitor.workflow.jobs:
                 monitor.update_timestamp()
                 monitor.sync_machines()
@@ -114,7 +127,6 @@ def main(vm_limit, config_path, skip_setup, local):
     
     statistics.jobs(entries)
     statistics.dump()
-    print("stop message received")
     
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Provisioner server')

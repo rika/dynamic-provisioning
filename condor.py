@@ -57,4 +57,7 @@ def condor_reschedule():
     proc = Popen(cmd, stdout=PIPE, shell=True)
     proc.communicate()
     
-
+def condor_rm_jobs():
+    cmd = "condor_rm -all"
+    proc = Popen(cmd, stdout=PIPE, shell=True)
+    proc.communicate()

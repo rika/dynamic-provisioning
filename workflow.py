@@ -86,12 +86,10 @@ def parse_predictions(predfile, jobs):
         reader = csv.reader(pred, delimiter=',')
         avg_exec = {}
         for row in reader:
-            print row
             try:
                 duration = round(float(row[1]))
                 avg_exec[row[0]] = timedelta(seconds=duration)
             except ValueError:
-                print 'ValueError'
                 pass
             
         for job in jobs:

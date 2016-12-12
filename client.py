@@ -74,7 +74,10 @@ def main():
         sleep(10)
         while not workflow_finish(path):
             sleep(10)
-        send('--stop')
+        try:
+            send('--stop')
+        except socket.error:
+            pass
         
 if __name__ == '__main__':
     main()

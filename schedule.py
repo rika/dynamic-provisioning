@@ -11,6 +11,7 @@ from sets import Set
 from common import VM_COST_PER_SEC, VM_BOOTTIME
 
 from time import time
+from datetime import timedelta
 
 DEBUG = False
 class Timer():
@@ -89,7 +90,7 @@ def get_nmax(workflow, machines, schedule, vm_limit, timestamp, local):
     :return n: max number of machines that can be used
     """
     if local:
-        vm_boottime = 1
+        vm_boottime = timedelta(seconds=1)
     else:
         vm_boottime = VM_BOOTTIME
     
@@ -173,7 +174,7 @@ def sched_cost_n(workflow, machines, schedule, n, timestamp, local):
     Return the cost used by n machines from timestamp untill end of execution.
     """
     if local:
-        vm_boottime = 1
+        vm_boottime = timedelta(seconds=1)
     else:
         vm_boottime = VM_BOOTTIME
     
@@ -226,9 +227,9 @@ def sched_number_of_machines(workflow, machines, schedule, nmax, timestamp, budg
             upperb = i-1
         if lowerb == upperb:
             found = True
-    #if lowerb == 1:
-        #raise BudgetException("Not enough budget, min cost is: " + str(costs[i]))
-        #return _schedules[i], costs[i], i # i is 2
+    if lowerb == 1:
+        raise BudgetException("Not enough budget, min cost is: " + str(costs[2]))
+        #return _schedules[2], costs[2], 2 # i is 2
     
     TIMER.tick('after number of machines')
     return _schedules[lowerb], costs[lowerb], lowerb
