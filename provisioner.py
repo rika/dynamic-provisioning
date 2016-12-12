@@ -61,7 +61,7 @@ class Provisioner():
             self.exp = self.master_addr = self.user = None
         
     def add_workflow(self, workflow_dir, prediction_file, budget):
-        self.budget = self.budget + int(budget)
+        self.budget = self.budget + int(round(float(budget)))
         wf_id = self.workflow.add_workflow(workflow_dir, prediction_file=prediction_file)
         self.logwatcher.add(wf_id, workflow_dir)
             
