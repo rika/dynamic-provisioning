@@ -79,6 +79,7 @@ class Provisioner():
 
             # Get the number of machines to be used
             schedule, _cost, _n = sched_number_of_machines(self.workflow, self.machines, self.schedule, nmax, self.timestamp, self.budget, self.local)
+            print "N", _n
             
             # Update schedule
             self.schedule = schedule
@@ -126,18 +127,24 @@ class Provisioner():
     
     
     def sync_machines(self):
-        slots = condor_slots()
+        slots_addrs = condor_slots()
         running_machines = [m for m in self.machines if m.status == MachineStatus.running]
-        allocating_machines = [m for m in self.machines if m.status == MachineStatus.allocating]
+        if self.local:
+            allocating_machines = [m for m in self.machines if m.status == MachineStatus.allocating]
         #allocating_machines.sort(key=lambda x: self.schedule.entries_host[x][0].start())
         i = 0
-        for s in slots:
-            if s not in [m.condor_slot for m in running_machines]:
-                if len(allocating_machines[i:]) > 0:
+        for (slot,addr) in slots_addrs:
+            if slot not in [m.condor_slot for m in running_machines]:
+                allocated_machine = None
+                if not self.local:
+                    allocated_machine = next((m for m in self.machines if m.priv_addr == addr), None)
+                elif len(allocating_machines[i:]) > 0:
                     # update machine
                     allocated_machine = allocating_machines[i]
+                
+                if allocated_machine:
                     allocated_machine.status = MachineStatus.running
-                    allocated_machine.condor_slot = s
+                    allocated_machine.condor_slot = slot
                     
                     # update entry
                     boot_entry = self.schedule.entries_host[allocated_machine][0]

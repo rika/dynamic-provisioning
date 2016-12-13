@@ -3,7 +3,7 @@
 
 from subprocess import Popen
 from subprocess import PIPE
-
+import re
 
 ''' JobStatus
 0    Unexpanded     U
@@ -15,11 +15,12 @@ from subprocess import PIPE
 6    Submission_err E
 
 '''
-             
+
 def condor_slots():
-    cmd = "condor_status -format '%s ' Name"
+    p = re.compile('\d+.\d+.\d+.\d+')
+    cmd = "condor_status -format '%s ' Name -format '%s;' MyAddress"
     proc = Popen(cmd, stdout=PIPE, shell=True)
-    return filter(None, proc.communicate()[0].split())
+    return[(row.split()[0], p.search(row).group()) for row in filter(None, proc.communicate()[0].split(';'))] 
 
 def condor_q(condor_id):
     cmd = "condor_q -constraint 'ClusterId == "+str(condor_id)+"' -format '%s ' pegasus_wf_uuid -format '%s ' pegasus_wf_dag_job_id -format '%s' RemoteHost" 

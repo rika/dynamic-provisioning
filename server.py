@@ -121,7 +121,10 @@ def main(vm_limit, config_path, skip_setup, local):
                 statistics.snapshot(monitor.timestamp, monitor.entries, monitor.machines)
                 
         sys.stdout.flush()
-        
+    
+    if provisioner.exp:
+        provisioner.exp.deprovision()
+    
     if monitor == None:
         entries = provisioner.schedule.entries
     else:

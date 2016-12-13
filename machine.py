@@ -4,15 +4,9 @@
 import uuid
 import threading
 import os 
+import socket
 
 
-def _allocate(exp, name, master_addr, user):
-    exp.provision(tags=[name], has_public_ip=False)
-    exp.wait(tags=[name])
-    #setup
-    dir_path = os.path.dirname(os.path.realpath(__file__))
-    exp.put([name], os.path.join(dir_path,'worker.sh'), '/tmp/worker.sh', user=user, priv=True)
-    exp.run([name], 'sudo chmod 777 /tmp/worker.sh && sudo /tmp/worker.sh '+master_addr, user=user, priv=True)
 
 
 class Machine():
@@ -23,12 +17,23 @@ class Machine():
             self.id = machine_id
         self.status = MachineStatus.scheduled
         self.condor_slot = "new slot"
+        self.priv_addr = None
     
+    def _allocate(self, exp, name, master_addr, user):
+        exp.provision(tags=[name], has_public_ip=False)
+        exp.wait(tags=[name])
+        #setup
+        dir_path = os.path.dirname(os.path.realpath(__file__))
+        exp.put([name], os.path.join(dir_path,'worker.sh'), '/tmp/worker.sh', user=user, priv=True)
+        exp.run([name], 'sudo chmod 777 /tmp/worker.sh && sudo /tmp/worker.sh '+master_addr, user=user, priv=True)
+        self.priv_addr = exp.get_private_hostnames([name])[0]
+        
     def allocate(self, exp, master_addr, user):
-        print 'allocating', self.id
+        print 'allocating', self.condor_slot
+        self.status = MachineStatus.allocating
         if exp:
             self.azure_allocate_thread = threading.Thread(
-                target=_allocate,
+                target=self._allocate,
                 args=(
                     exp,
                     self.id,
@@ -37,10 +42,10 @@ class Machine():
                 ),
             )
             self.azure_allocate_thread.start()
-        self.status = MachineStatus.allocating
 
     def deallocate(self, exp):
-        print 'deallocating', self.id
+        print 'deallocating', self.condor_slot
+        self.status = MachineStatus.deallocating
         if exp:
             self.azure_deallocate_thread = threading.Thread(
                 target=exp.deprovision,
@@ -49,7 +54,6 @@ class Machine():
                 ),
             )
             self.azure_deallocate_thread.start()
-        self.status = MachineStatus.deallocating
     
 class MachineStatus():
     manager = 0
