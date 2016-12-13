@@ -9,6 +9,8 @@ from datetime import timedelta
 from job import Job
 import csv
 
+MANAGEMENT_K = 5
+
 def parse_dag(workflow_dir):
     cwd = os.getcwd()
     os.chdir(workflow_dir)
@@ -95,7 +97,7 @@ def parse_predictions(predfile, jobs):
         for job in jobs:
             for jt in avg_exec.keys():
                 if jt in job.dag_job_id:
-                    job.pduration = avg_exec[jt]
+                    job.pduration = avg_exec[jt] + timedelta(seconds=MANAGEMENT_K) 
                     break
 
 def visit(job, visited):

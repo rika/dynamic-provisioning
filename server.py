@@ -86,9 +86,9 @@ def main(vm_limit, config_path, skip_setup, local):
                     provisioner.update_schedule()
                 except BudgetException:
                     done = True
-                    time.sleep(1)
-                    provisioner.exp.deprovision()
+                    time.sleep(2)
                     condor_rm_jobs()
+                    provisioner.exp.deprovision()
 
             client_socket.close()
         except timeout:
@@ -106,8 +106,8 @@ def main(vm_limit, config_path, skip_setup, local):
                     provisioner.update_jobs()
                 except BudgetException:
                     done = True
-                    provisioner.exp.deprovision()
                     condor_rm_jobs()
+                    provisioner.exp.deprovision()
                 
                 # Statistics
                 provisioner.update_wf_pred()
