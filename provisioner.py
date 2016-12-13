@@ -197,8 +197,9 @@ class Provisioner():
                 sched_entry = next((e for e in self.schedule.entries \
                                     if e.job.dag_job_id == dag_job_id \
                                     and e.job.wf_id == wf_id ), None)
-                sched_entry.condor_id = condor_id
-                self.schedule.add_entry_cid(sched_entry)
+                if sched_entry:
+                    sched_entry.condor_id = condor_id
+                    self.schedule.add_entry_cid(sched_entry)
 
             if sched_entry and sched_entry.status == EntryStatus.scheduled \
                     and sched_entry.host.status == MachineStatus.running:
