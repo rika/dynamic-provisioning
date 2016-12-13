@@ -153,7 +153,8 @@ class Provisioner():
                     i += 1
                     print "++Machine", allocated_machine.condor_slot
                 else:
-                    print "NOT FOUND", slot, addr, [(m.priv_addr,m.status) for m in self.machines]
+                    if next((e for e in self.schedule.entries if e.host.priv_addr == addr and e.status != EntryStatus.completed), None):
+                        print "ERROR: slot not found", slot, addr, 'nr', len(running_machines), 'na', len(allocating_machines)
                 
 
     
