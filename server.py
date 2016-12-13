@@ -86,7 +86,8 @@ def main(vm_limit, config_path, skip_setup, local):
                     provisioner.update_schedule()
                 except BudgetException:
                     done = True
-                    time.sleep(4)
+                    time.sleep(1)
+                    provisioner.exp.deprovision()
                     condor_rm_jobs()
 
             client_socket.close()
@@ -105,6 +106,7 @@ def main(vm_limit, config_path, skip_setup, local):
                     provisioner.update_jobs()
                 except BudgetException:
                     done = True
+                    provisioner.exp.deprovision()
                     condor_rm_jobs()
                 
                 # Statistics
