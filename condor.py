@@ -17,7 +17,7 @@ import re
 '''
 
 def condor_slots():
-    p = re.compile('\d+.\d+.\d+.\d+')
+    p = re.compile('\d+\.\d+\.\d+\.\d+')
     cmd = "condor_status -format '%s ' Name -format '%s;' MyAddress"
     proc = Popen(cmd, stdout=PIPE, shell=True)
     return[(row.split()[0], p.search(row).group()) for row in filter(None, proc.communicate()[0].split(';'))] 
