@@ -117,20 +117,21 @@ def main(vm_limit, config_path, skip_setup, local):
                 
         sys.stdout.flush()
     
-    if provisioner.exp:
-        try:
-            provisioner.exp.deprovision()
-        except Exception:
-            pass
-    
     if monitor == None:
         entries = provisioner.schedule.entries
     else:
         entries = monitor.entries
     
     statistics.jobs(entries)
-    statistics.dump(
-    condor_rm_jobs())
+    statistics.dump()
+    
+    if provisioner.exp:
+        try:
+            provisioner.exp.deprovision()
+        except Exception:
+            pass
+    
+    condor_rm_jobs()
     
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Provisioner server')
