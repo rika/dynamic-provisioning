@@ -11,7 +11,7 @@ class Job:
 
     def is_pegasus_job(self):
         if self.dag_job_id.startswith('create_dir') or \
-           self.dag_job_id.startswith('register_staging') or \
+           self.dag_job_id.startswith('register') or \
            self.dag_job_id.startswith('stage_in') or \
            self.dag_job_id.startswith('stage_out') or \
            self.dag_job_id.startswith('stage_worker'):
