@@ -119,7 +119,7 @@ class Provisioner():
             # if there's nothing executing or scheduled to the machine
             if self.schedule == None or len([e for e in self.schedule.entries_host[m] if e.status != EntryStatus.completed]) == 0:
                 m.deallocate(self.exp)
-                print "--Machine", m.id
+                print "--Machine", m.condor_slot
                 
         # update machine list
         self.machines = [m for m in self.machines if m.status != MachineStatus.deallocating]
@@ -145,7 +145,7 @@ class Provisioner():
                     boot_entry.status = EntryStatus.completed
                 
                     i += 1
-                    print "++Machine", allocated_machine.id
+                    print "++Machine", allocated_machine.condor_slot
 
     
     def _handle_log_events(self):
