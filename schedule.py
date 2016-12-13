@@ -228,7 +228,8 @@ def sched_number_of_machines(workflow, machines, schedule, nmax, timestamp, budg
         if lowerb == upperb:
             found = True
     if lowerb == 1:
-        raise BudgetException("Not enough budget, min cost is: " + str(costs[2]))
+        print "Not enough budget, min cost is: " + str(costs[2])
+        raise BudgetException()
         #return _schedules[2], costs[2], 2 # i is 2
     
     TIMER.tick('after number of machines')
