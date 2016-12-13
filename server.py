@@ -49,9 +49,11 @@ def main(vm_limit, config_path, skip_setup, local):
     
     # Wait for connections until receive a stop message
     done = False
+    no_budget = False
     while(True):
         if done and ((monitor != None and monitor.logwatcher.watching_none()) \
-                or (monitor == None and provisioner.logwatcher.watching_none())):
+                or (monitor == None and provisioner.logwatcher.watching_none())) \
+                or no_budget:
             break
                 
         try:
@@ -85,7 +87,7 @@ def main(vm_limit, config_path, skip_setup, local):
                 try:
                     provisioner.update_schedule()
                 except BudgetException:
-                    done = True
+                    no_budget = True
 
             client_socket.close()
         except timeout:
@@ -102,7 +104,7 @@ def main(vm_limit, config_path, skip_setup, local):
                 try:
                     provisioner.update_jobs()
                 except BudgetException:
-                    done = True
+                    no_budget = True
                     
                 # Statistics
                 provisioner.update_wf_pred()
