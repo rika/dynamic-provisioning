@@ -79,7 +79,7 @@ class Provisioner():
 
             # Get the number of machines to be used
             schedule, _cost, _n = sched_number_of_machines(self.workflow, self.machines, self.schedule, nmax, self.timestamp, self.budget, self.local)
-            print "N", _n
+            print "N", _n, 'budget', self.budget
             
             # Update schedule
             self.schedule = schedule
