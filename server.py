@@ -86,9 +86,6 @@ def main(vm_limit, config_path, skip_setup, local):
                     provisioner.update_schedule()
                 except BudgetException:
                     done = True
-                    time.sleep(2)
-                    condor_rm_jobs()
-                    provisioner.exp.deprovision()
 
             client_socket.close()
         except timeout:
@@ -106,9 +103,7 @@ def main(vm_limit, config_path, skip_setup, local):
                     provisioner.update_jobs()
                 except BudgetException:
                     done = True
-                    condor_rm_jobs()
-                    provisioner.exp.deprovision()
-                
+                    
                 # Statistics
                 provisioner.update_wf_pred()
                 statistics.schedshot(provisioner)
@@ -123,7 +118,10 @@ def main(vm_limit, config_path, skip_setup, local):
         sys.stdout.flush()
     
     if provisioner.exp:
-        provisioner.exp.deprovision()
+        try:
+            provisioner.exp.deprovision()
+        except Exception:
+            pass
     
     if monitor == None:
         entries = provisioner.schedule.entries
@@ -131,7 +129,8 @@ def main(vm_limit, config_path, skip_setup, local):
         entries = monitor.entries
     
     statistics.jobs(entries)
-    statistics.dump()
+    statistics.dump(
+    condor_rm_jobs())
     
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Provisioner server')
