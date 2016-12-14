@@ -9,7 +9,7 @@ from datetime import timedelta
 from job import Job
 import csv
 
-MANAGEMENT_K = 20
+MANAGEMENT_K = 5
 
 def parse_dag(workflow_dir):
     cwd = os.getcwd()
