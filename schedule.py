@@ -11,7 +11,7 @@ from sets import Set
 from common import VM_COST_PER_SEC, VM_BOOTTIME
 
 from time import time
-from datetime import timedelta
+from datetime import timedelta, datetime
 
 DEBUG = False
 class Timer():
@@ -218,9 +218,15 @@ def sched_number_of_machines(workflow, machines, schedule, nmax, timestamp, budg
     upperb = nmax # supoem nmax > 0
     found = False
 
+    d= datetime.now()
+
     while not found:
         i = int(ceil((lowerb + upperb) / 2.0))
         _schedules[i], costs[i] = sched_cost_n(workflow, machines, schedule, i, timestamp, local)
+        last = None
+        for e in _schedules[i].entries:
+            last = e.end() if last is None or last < e.end() else last
+        print i, costs[i], (last-d).total_seconds()
         if costs[i] < budget: #satisfied
             lowerb = i
         else:
@@ -259,6 +265,7 @@ class Schedule():
             self.entries_host[host] = []
         insert_entry(self.entries_host[host], entry)
         self.entries.add(entry)
+        entry.host = host
     
     def add_entry_cid(self, entry):
         if entry.condor_id == None:
